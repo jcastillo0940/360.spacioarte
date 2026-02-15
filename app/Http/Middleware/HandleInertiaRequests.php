@@ -17,14 +17,21 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return array_merge(parent::share($request), [
             'auth' => [
-                'user' => $request->user() ? [
-                    'id' => $request->user()->id,
-                    'name' => $request->user()->name,
-                    'email' => $request->user()->email,
+                'user' => $user ? [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    // Convertimos la colección de Spatie a un array de strings para React
+                    'roles' => $user->getRoleNames()->toArray(), 
+                    // Pluckeamos solo los nombres de permisos y convertimos a array plano
+                    'permissions' => $user->getAllPermissions()->pluck('name')->toArray(),
                 ] : null,
             ],
+            // Manejo de notificaciones flash para el componente Notifications.jsx
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),

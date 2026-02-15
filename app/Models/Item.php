@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Item extends Model
 {
@@ -23,7 +24,9 @@ class Item extends Model
         'tax_id',
         'categoria',
         'unidad_medida',
-        'activo'
+        'activo',
+        'proceso_id',    // Requerido para vincular el producto a una máquina
+        'item_base_id'   // Requerido para la relación Materia Prima -> Producto Terminado
     ];
 
     // Casteamos los valores numéricos para que PHP los trate como números y no strings
@@ -43,6 +46,30 @@ class Item extends Model
     public function tax(): BelongsTo
     {
         return $this->belongsTo(Tax::class, 'tax_id');
+    }
+
+    /**
+     * Relación con el proceso de manufactura (Máquina por defecto)
+     */
+    public function procesoDefault(): BelongsTo
+    {
+        return $this->belongsTo(Proceso::class, 'proceso_id');
+    }
+
+    /**
+     * Relación con el producto base (Materia Prima)
+     */
+    public function productoBase(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_base_id');
+    }
+
+    /**
+     * Relación con productos que se fabrican a partir de este item
+     */
+    public function productosDerivados(): HasMany
+    {
+        return $this->hasMany(Item::class, 'item_base_id');
     }
 
     /**

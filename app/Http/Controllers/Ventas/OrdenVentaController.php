@@ -7,6 +7,7 @@ use App\Models\OrdenVenta;
 use App\Models\Contacto;
 use App\Models\Item;
 use App\Models\Vendedor;
+use App\Models\OrdenProduccion; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -15,7 +16,11 @@ class OrdenVentaController extends Controller
     public function index()
     {
         if (request()->is('api/*')) {
-            return response()->json(OrdenVenta::with(['cliente', 'vendedor', 'sucursal'])->orderBy('id', 'desc')->get());
+            return response()->json(
+                OrdenVenta::with(['cliente', 'vendedor', 'sucursal'])
+                    ->orderBy('id', 'desc')
+                    ->get()
+            );
         }
         
         return inertia('Ventas/Ordenes/Index');
@@ -25,7 +30,12 @@ class OrdenVentaController extends Controller
     {
         try {
             $clientes = Contacto::where('es_cliente', true)->get();
-            $productos = Item::with('tax')->where('activo', true)->get();
+            
+            // Cargamos procesoDefault para vincular con máquinas en el frontend
+            $productos = Item::with(['tax', 'procesoDefault'])
+                ->where('activo', true)
+                ->get();
+
             $vendedores = Vendedor::where('activo', true)->get();
             
             return response()->json([
@@ -34,7 +44,7 @@ class OrdenVentaController extends Controller
                 'vendedores' => $vendedores
             ]);
         } catch (\Exception $e) {
-            \Log::error('Error en getDatos: ' . $e->getMessage());
+            \Log::error('Error en getDatos OrdenVenta: ' . $e->getMessage());
             return response()->json([
                 'error' => $e->getMessage(),
                 'clientes' => [],
@@ -46,14 +56,26 @@ class OrdenVentaController extends Controller
 
     public function show($id)
     {
-        if (request()->is('api/*')) {
-            return response()->json(
-                OrdenVenta::with(['cliente', 'vendedor', 'sucursal', 'detalles.item'])
-                    ->findOrFail($id)
-            );
+        try {
+            if (request()->is('api/*')) {
+                // Sincronizado con el modelo OrdenVenta y sus relaciones
+                $orden = OrdenVenta::with([
+                    'cliente', 
+                    'vendedor', 
+                    'sucursal', 
+                    'detalles.item.procesoDefault', 
+                    'mensajes.usuario',
+                    'produccion.maquina' 
+                ])->findOrFail($id);
+
+                return response()->json($orden);
+            }
+            
+            return inertia('Ventas/Ordenes/Show', ['ordenId' => $id]);
+        } catch (\Exception $e) {
+            \Log::error("Error mostrando orden #{$id}: " . $e->getMessage());
+            return response()->json(['error' => 'Error interno: ' . $e->getMessage()], 500);
         }
-        
-        return inertia('Ventas/Ordenes/Show', ['ordenId' => $id]);
     }
 
     public function store(Request $request)
@@ -73,7 +95,6 @@ class OrdenVentaController extends Controller
 
         DB::beginTransaction();
         try {
-            // Calcular totales
             $subtotal = 0;
             $itbms_total = 0;
             
@@ -85,11 +106,9 @@ class OrdenVentaController extends Controller
             
             $total = $subtotal + $itbms_total;
 
-            // Generar número de orden
             $ultimaOrden = OrdenVenta::latest('id')->first();
             $numeroOrden = 'OV-' . str_pad(($ultimaOrden ? $ultimaOrden->id + 1 : 1), 6, '0', STR_PAD_LEFT);
 
-            // Crear orden
             $orden = OrdenVenta::create([
                 'numero_orden' => $numeroOrden,
                 'contacto_id' => $validated['contacto_id'],
@@ -103,24 +122,22 @@ class OrdenVentaController extends Controller
                 'estado' => 'Borrador'
             ]);
 
-            // Crear detalles
             foreach ($validated['items'] as $item) {
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
-                $lineaItbms = $lineaSubtotal * ($item['tasa_itbms'] / 100);
                 
+                // CORRECCIÓN: Usamos 'porcentaje_itbms' y eliminamos 'monto_itbms' que no está en tu DB
                 $orden->detalles()->create([
                     'item_id' => $item['item_id'],
                     'cantidad' => $item['cantidad'],
                     'precio_unitario' => $item['precio_unitario'],
                     'subtotal' => $lineaSubtotal,
-                    'tasa_itbms' => $item['tasa_itbms'],
-                    'monto_itbms' => $lineaItbms,
-                    'total' => $lineaSubtotal + $lineaItbms
+                    'porcentaje_itbms' => $item['tasa_itbms'], 
+                    'total' => $lineaSubtotal + ($lineaSubtotal * ($item['tasa_itbms'] / 100))
                 ]);
             }
 
             DB::commit();
-            return redirect()->route('ordenes.index')->with('success', 'Orden de venta creada correctamente');
+            return redirect()->route('ordenes.index')->with('success', 'Orden creada correctamente');
             
         } catch (\Exception $e) {
             DB::rollBack();
@@ -131,9 +148,8 @@ class OrdenVentaController extends Controller
 
     public function update(Request $request, OrdenVenta $orden)
     {
-        // Solo permitir edición si está en Borrador o Confirmada
         if (!in_array($orden->estado, ['Borrador', 'Confirmada'])) {
-            return redirect()->back()->with('error', 'No se puede editar una orden en estado ' . $orden->estado);
+            return redirect()->back()->with('error', 'No se puede editar esta orden.');
         }
 
         $validated = $request->validate([
@@ -150,12 +166,10 @@ class OrdenVentaController extends Controller
 
         DB::beginTransaction();
         try {
-            // Calcular totales
             $subtotal = 0;
             $itbms_total = 0;
             
             foreach ($validated['items'] as $item) {
-                // Obtener el item para saber su tasa de ITBMS
                 $producto = Item::with('tax')->find($item['item_id']);
                 $tasa_itbms = $producto->tax ? $producto->tax->porcentaje : 0;
                 
@@ -166,7 +180,6 @@ class OrdenVentaController extends Controller
             
             $total = $subtotal + $itbms_total;
 
-            // Actualizar orden
             $orden->update([
                 'contacto_id' => $validated['contacto_id'],
                 'vendedor_id' => $validated['vendedor_id'],
@@ -178,59 +191,38 @@ class OrdenVentaController extends Controller
                 'total' => $total,
             ]);
 
-            // Eliminar detalles anteriores
             $orden->detalles()->delete();
 
-            // Crear nuevos detalles
             foreach ($validated['items'] as $item) {
                 $producto = Item::with('tax')->find($item['item_id']);
                 $tasa_itbms = $producto->tax ? $producto->tax->porcentaje : 0;
                 
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
-                $lineaItbms = $lineaSubtotal * ($tasa_itbms / 100);
                 
+                // CORRECCIÓN: Sincronizado con nombres de columna de tu DB
                 $orden->detalles()->create([
                     'item_id' => $item['item_id'],
                     'cantidad' => $item['cantidad'],
                     'precio_unitario' => $item['precio_unitario'],
                     'subtotal' => $lineaSubtotal,
-                    'tasa_itbms' => $tasa_itbms,
-                    'monto_itbms' => $lineaItbms,
-                    'total' => $lineaSubtotal + $lineaItbms
+                    'porcentaje_itbms' => $tasa_itbms,
+                    'total' => $lineaSubtotal + ($lineaSubtotal * ($tasa_itbms / 100))
                 ]);
             }
 
             DB::commit();
-            
-            if (request()->is('api/*') || request()->wantsJson()) {
-                return response()->json([
-                    'message' => 'Orden actualizada correctamente',
-                    'data' => $orden->fresh()->load(['cliente', 'vendedor', 'detalles.item'])
-                ]);
-            }
-            
-            return redirect()->route('ordenes.index')->with('success', 'Orden actualizada correctamente');
+            return response()->json(['message' => 'Orden actualizada']);
             
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Error actualizando orden: ' . $e->getMessage());
-            
-            if (request()->is('api/*') || request()->wantsJson()) {
-                return response()->json(['error' => 'Error al actualizar la orden: ' . $e->getMessage()], 500);
-            }
-            
-            return redirect()->back()->with('error', 'Error al actualizar la orden: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
     public function updateEstado(Request $request, OrdenVenta $orden)
     {
-        $validated = $request->validate([
-            'estado' => 'required|in:Borrador,Confirmada,Facturada,Cancelada'
-        ]);
-
+        $validated = $request->validate(['estado' => 'required|in:Borrador,Confirmada,Facturada,Cancelada']);
         $orden->update(['estado' => $validated['estado']]);
-        
-        return redirect()->back()->with('success', 'Estado actualizado correctamente');
+        return redirect()->back()->with('success', 'Estado actualizado');
     }
 }

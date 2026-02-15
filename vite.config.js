@@ -8,6 +8,8 @@ export default defineConfig({
         laravel({
             input: 'resources/js/app.jsx',
             refresh: true,
+            // 1. Le decimos al plugin de Laravel dónde está la carpeta pública real
+            publicDirectory: 'public_html', 
         }),
         react(),
         VitePWA({
@@ -32,7 +34,6 @@ export default defineConfig({
                 ]
             },
             workbox: {
-                // Estrategia de caché para API requests
                 runtimeCaching: [{
                     urlPattern: ({ url }) => url.pathname.startsWith('/pwa/sync'),
                     handler: 'NetworkFirst',
@@ -47,4 +48,9 @@ export default defineConfig({
             }
         })
     ],
+    // 2. Configuramos la salida del Build para que caiga en public_html/build
+    build: {
+        outDir: 'public_html/build',
+        emptyOutDir: true, // Limpia la carpeta antes de compilar
+    }
 });

@@ -11,7 +11,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Indicamos a Laravel que la ruta pública real es public_html
+        // Esto corrige problemas con las rutas de imágenes y archivos cargados
+        $this->app->bind('path.public', function() {
+            return base_path('public_html');
+        });
     }
 
     /**
