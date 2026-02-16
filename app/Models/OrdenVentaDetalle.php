@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrdenVentaDetalle extends Model
 {
-    // Forzamos el nombre exacto que tienes en PHPMyAdmin
     protected $table = 'orden_venta_detalles';
 
     protected $fillable = [
@@ -15,8 +14,8 @@ class OrdenVentaDetalle extends Model
         'item_id',
         'cantidad',
         'precio_unitario',
-        'porcentaje_itbms',     // Nombre exacto según tu DESCRIBE
-        'porcentaje_descuento', // Nombre exacto según tu DESCRIBE
+        'porcentaje_itbms',
+        'porcentaje_descuento',
         'subtotal',
         'total'
     ];

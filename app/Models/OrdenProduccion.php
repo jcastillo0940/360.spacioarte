@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class OrdenProduccion extends Model
 {
@@ -18,23 +20,23 @@ class OrdenProduccion extends Model
         'notas_operario'
     ];
 
-    public function venta()
+    public function venta(): BelongsTo
     {
         return $this->belongsTo(OrdenVenta::class, 'orden_venta_id');
     }
 
-    public function maquina()
+    public function maquina(): BelongsTo
     {
         return $this->belongsTo(Proceso::class, 'proceso_id');
     }
 
-    public function materiaPrima()
+    public function materiaPrima(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'item_id');
     }
 
     // Un trabajo puede pertenecer a un pliego de impresión (Nesting)
-    public function pliegos()
+    public function pliegos(): BelongsToMany
     {
         return $this->belongsToMany(PliegoImpresion::class, 'pliego_orden_produccion', 'orden_produccion_id', 'pliego_id');
     }

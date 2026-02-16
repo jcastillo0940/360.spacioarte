@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Head, router, useForm } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import Pusher from 'pusher-js'; // Importante tener instalado: npm install pusher-js
+import Pusher from 'pusher-js';
+import axios from 'axios';
 import { 
     MessageSquare, 
     Send, 
@@ -11,13 +12,15 @@ import {
     ExternalLink, 
     FileText,
     Activity,
-    Cpu
+    Cpu,
+    AlertCircle
 } from 'lucide-react';
 
 export default function Show({ ordenId }) {
     const [orden, setOrden] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [mensajes, setMensajes] = useState([]); // Historial en memoria (Pusher)
+    const [errorMsg, setErrorMsg] = useState(null); 
+    const [mensajes, setMensajes] = useState([]);
     const scrollRef = useRef(null);
     
     const { data, setData, processing, reset } = useForm({
@@ -25,7 +28,6 @@ export default function Show({ ordenId }) {
         requiere_aprobacion: false,
     });
 
-    // Función para bajar el scroll automáticamente cuando llega un mensaje
     const scrollToBottom = () => {
         scrollRef.current?.scrollIntoView({ behavior: "smooth" });
     };
@@ -35,38 +37,47 @@ export default function Show({ ordenId }) {
     }, [mensajes]);
 
     const refreshData = () => {
-        fetch(`/api/ventas/ordenes/${ordenId}`)
-            .then(res => res.json())
-            .then(data => {
-                setOrden(data);
+        axios.get(`/api/ventas/ordenes/${ordenId}`)
+            .then(res => {
+                if (res.data.error) {
+                    setErrorMsg(res.data.error);
+                } else {
+                    setOrden(res.data);
+                }
                 setLoading(false);
             })
-            .catch(err => console.error("Error al cargar orden:", err));
+            .catch(err => {
+                console.error("Error al cargar orden:", err);
+                setErrorMsg(err.response?.data?.error || "Error de conexión al cargar la orden.");
+                setLoading(false);
+            });
     };
 
-    // EFECTO: Carga inicial y Conexión Pusher
     useEffect(() => {
         refreshData();
+    }, [ordenId]);
 
-        // Configuración Pusher (Tus credenciales reales)
-        const pusher = new Pusher('423d616fb70f7d534cdc', {
-            cluster: 'mt1'
+    useEffect(() => {
+        if (!orden?.tracking_token) return;
+
+        const pusher = new Pusher(import.meta.env.VITE_PUSHER_APP_KEY, {
+            cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
+            forceTLS: true,
+            enabledTransports: ['ws', 'wss']
         });
 
-        // Solo nos suscribimos si tenemos el token
-        if (orden?.tracking_token) {
-            const channel = pusher.subscribe(`chat.${orden.tracking_token}`);
-            
-            // Escuchamos el evento broadcasted desde Laravel
-            channel.bind('nuevo-mensaje', function(data) {
-                setMensajes(prev => [...prev, data.mensaje]);
-            });
+        const channel = pusher.subscribe(`chat.${orden.tracking_token}`);
+        
+        channel.bind('nuevo-mensaje', function(data) {
+            const nuevoMensaje = data.mensaje || data;
+            setMensajes(prev => [...prev, nuevoMensaje]);
+        });
 
-            return () => {
-                pusher.unsubscribe(`chat.${orden.tracking_token}`);
-            };
-        }
-    }, [ordenId, orden?.tracking_token]);
+        return () => {
+            pusher.unsubscribe(`chat.${orden.tracking_token}`);
+            pusher.disconnect();
+        };
+    }, [orden?.tracking_token]);
 
     const handleFacturar = () => {
         if (confirm('¿Desea generar la factura fiscal?')) {
@@ -74,7 +85,6 @@ export default function Show({ ordenId }) {
         }
     };
 
-    // ENVÍO DE MENSAJE: Vía API -> Evento Pusher -> Otros Clientes
     const submitMensaje = async (e) => {
         e.preventDefault();
         if (!data.mensaje_texto) return;
@@ -86,32 +96,31 @@ export default function Show({ ordenId }) {
             requiere_aprobacion: data.requiere_aprobacion 
         };
 
-        // 1. Añadimos localmente (Instantáneo)
         setMensajes(prev => [...prev, msgObj]);
 
-        // 2. Enviamos al endpoint que dispara el evento de Pusher
         try {
-            await fetch('/api/ventas/enviar-chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    mensaje: msgObj, 
-                    token: orden.tracking_token 
-                })
+            await axios.post('/api/ventas/enviar-chat', {
+                mensaje: msgObj, 
+                token: orden.tracking_token 
             });
             reset('mensaje_texto', 'requiere_aprobacion');
         } catch (error) {
-            console.error("Falla al enviar a Pusher:", error);
+            console.error("Falla al enviar mensaje:", error);
         }
     };
 
     const copiarLink = () => {
+        if (!orden?.tracking_token) {
+            alert('No hay token de seguimiento generado para esta orden.');
+            return;
+        }
         const url = `${window.location.origin}/tracking/${orden.tracking_token}`;
         navigator.clipboard.writeText(url);
         alert('Enlace de seguimiento copiado');
     };
 
     const formatCurrency = (value) => {
+        if (value === undefined || value === null) return '$0.00';
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
     };
 
@@ -120,11 +129,29 @@ export default function Show({ ordenId }) {
             <AuthenticatedLayout>
                 <div className="max-w-6xl mx-auto p-12 text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="text-slate-600 mt-4 font-bold uppercase tracking-widest">Sincronizando con Pusher...</p>
+                    <p className="text-slate-600 mt-4 font-bold uppercase tracking-widest">Cargando datos de la orden...</p>
                 </div>
             </AuthenticatedLayout>
         );
     }
+
+    if (errorMsg) {
+        return (
+            <AuthenticatedLayout>
+                <div className="max-w-3xl mx-auto p-12 mt-10">
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-8 rounded-2xl shadow-sm flex flex-col items-center justify-center gap-4 text-center">
+                        <AlertCircle size={48} className="text-red-500" />
+                        <div>
+                            <strong className="font-black text-xl block mb-2 uppercase tracking-tighter">Error del Servidor</strong>
+                            <span className="text-base font-bold text-red-600 bg-white px-4 py-2 rounded-lg border border-red-100 shadow-inner block">{errorMsg}</span>
+                        </div>
+                    </div>
+                </div>
+            </AuthenticatedLayout>
+        );
+    }
+
+    if (!orden) return null;
 
     const prodInfo = orden.produccion?.[0] || null;
 
@@ -132,9 +159,8 @@ export default function Show({ ordenId }) {
         <AuthenticatedLayout>
             <Head title={`Orden ${orden.numero_orden}`} />
             
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 mt-6">
                 
-                {/* BARRA DE ESTADO SUPERIOR */}
                 <div className="bg-white rounded-2xl p-2 shadow-sm border border-slate-200 flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl">
                         <Activity size={18} className="text-blue-600"/>
@@ -156,7 +182,6 @@ export default function Show({ ordenId }) {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    {/* COLUMNA IZQUIERDA: DETALLES DE ORDEN */}
                     <div className="lg:col-span-2 space-y-6">
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
@@ -192,25 +217,29 @@ export default function Show({ ordenId }) {
                                         {orden.detalles?.map(item => (
                                             <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="py-4">
-                                                    <div className="font-bold text-slate-800 text-sm">{item.item?.nombre}</div>
-                                                    <div className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">SKU: {item.item?.codigo}</div>
+                                                    <div className="font-bold text-slate-800 text-sm">{item.item?.nombre || 'Producto sin nombre'}</div>
+                                                    <div className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">SKU: {item.item?.codigo || 'N/A'}</div>
                                                 </td>
                                                 <td className="py-4 text-center font-black text-slate-600">{item.cantidad}</td>
                                                 <td className="py-4 text-right font-black text-slate-900">{formatCurrency(item.total)}</td>
                                             </tr>
                                         ))}
+                                        {!orden.detalles?.length && (
+                                            <tr>
+                                                <td colSpan="3" className="py-8 text-center text-slate-400 text-sm font-bold uppercase">No hay productos en esta orden</td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
 
-                        {/* ACCESO RÁPIDO AL PORTAL */}
                         <div className="bg-gradient-to-br from-slate-900 to-blue-900 rounded-2xl p-6 text-white flex justify-between items-center shadow-2xl">
                             <div>
                                 <h3 className="font-black text-lg flex items-center gap-2 uppercase tracking-tighter">
                                     <ExternalLink size={20} className="text-blue-400"/> Portal del Cliente
                                 </h3>
-                                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Vía Canal Pusher mt1 • No consume servidor</p>
+                                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Canal Pusher Realtime • Seguimiento Externo</p>
                             </div>
                             <button 
                                 onClick={copiarLink}
@@ -221,7 +250,6 @@ export default function Show({ ordenId }) {
                         </div>
                     </div>
 
-                    {/* COLUMNA DERECHA: CHAT REALTIME (PUSHER) */}
                     <div className="lg:col-span-1">
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[700px] sticky top-6">
                             <div className="p-4 border-b bg-slate-900 text-white rounded-t-2xl flex items-center justify-between">
@@ -234,7 +262,6 @@ export default function Show({ ordenId }) {
                                 </span>
                             </div>
 
-                            {/* Área de Mensajes */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
                                 {mensajes.length === 0 && (
                                     <div className="text-center py-20 opacity-20 grayscale">
@@ -264,7 +291,6 @@ export default function Show({ ordenId }) {
                                 <div ref={scrollRef} />
                             </div>
 
-                            {/* Formulario Pusher */}
                             <form onSubmit={submitMensaje} className="p-4 border-t bg-white rounded-b-2xl space-y-3">
                                 <textarea 
                                     value={data.mensaje_texto}
@@ -279,7 +305,7 @@ export default function Show({ ordenId }) {
                                             type="checkbox" 
                                             checked={data.requiere_aprobacion}
                                             onChange={e => setData('requiere_aprobacion', e.target.checked)}
-                                            className="rounded text-blue-600 border-slate-300"
+                                            className="rounded text-blue-600 border-slate-300 focus:ring-blue-600"
                                         />
                                         Pedir Aprobación
                                     </label>

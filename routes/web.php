@@ -52,7 +52,9 @@ Route::middleware('guest')->group(function () {
 Route::prefix('tracking')->group(function () {
     Route::get('/{token}', [CustomerPortalController::class, 'show'])->name('tracking.publico');
     Route::post('/{token}/mensaje', [CustomerPortalController::class, 'sendMessage'])->name('tracking.mensaje');
-    Route::post('/{token}/aprobar', [CustomerPortalController::class, 'approveDesign'])->name('tracking.aprobar');
+    
+    // CORRECCIÓN: Se ajustó 'approve' para que coincida con la petición de la vista React
+    Route::post('/{token}/approve', [CustomerPortalController::class, 'approveDesign'])->name('tracking.aprobar');
 });
 
 // ========================================================================
@@ -237,7 +239,10 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('ordenes')->group(function () {
             Route::get('/', function() { return Inertia::render('Compras/Ordenes/Index'); })->name('ordenes.index');
             Route::get('/crear', function() { return Inertia::render('Compras/Ordenes/Create'); })->name('ordenes.create');
-            Route::post('/', [OrdenVentaController::class, 'store'])->name('ordenes.store');
+            
+            // CORRECCIÓN: Ahora usa OrdenCompraController para guardar
+            Route::post('/', [OrdenCompraController::class, 'store'])->name('ordenes.store');
+            
             Route::get('/{id}/pdf', [OrdenCompraController::class, 'generarPDF'])->name('ordenes.pdf');
             Route::put('/{orden}/estado', [OrdenCompraController::class, 'updateEstado'])->name('ordenes.estado');
             Route::get('/{orden}', function($id) { return Inertia::render('Compras/Ordenes/Show', ['ordenId' => $id]); })->name('ordenes.show');

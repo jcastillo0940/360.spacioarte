@@ -5,7 +5,6 @@ import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { route as ziggyRoute } from 'ziggy-js';
-// Importamos el registro manual del Service Worker
 import { registerSW } from 'virtual:pwa-register';
 
 const appName = import.meta.env.VITE_APP_NAME || 'ERP Pro';
@@ -18,7 +17,6 @@ if ("serviceWorker" in navigator) {
         immediate: true,
         onNeedRefresh() {
             // Opcional: Recargar automáticamente o mostrar aviso
-            // window.location.reload(); 
         },
         onOfflineReady() {
             console.log("App lista para trabajar offline.");

@@ -7,9 +7,10 @@ use App\Models\OrdenVenta;
 use App\Models\Contacto;
 use App\Models\Item;
 use App\Models\Vendedor;
-use App\Models\OrdenProduccion; 
+use App\Models\OrdenProduccion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrdenVentaController extends Controller
 {
@@ -31,7 +32,6 @@ class OrdenVentaController extends Controller
         try {
             $clientes = Contacto::where('es_cliente', true)->get();
             
-            // Cargamos procesoDefault para vincular con máquinas en el frontend
             $productos = Item::with(['tax', 'procesoDefault'])
                 ->where('activo', true)
                 ->get();
@@ -44,7 +44,7 @@ class OrdenVentaController extends Controller
                 'vendedores' => $vendedores
             ]);
         } catch (\Exception $e) {
-            \Log::error('Error en getDatos OrdenVenta: ' . $e->getMessage());
+            Log::error('Error en getDatos OrdenVenta: ' . $e->getMessage());
             return response()->json([
                 'error' => $e->getMessage(),
                 'clientes' => [],
@@ -58,13 +58,13 @@ class OrdenVentaController extends Controller
     {
         try {
             if (request()->is('api/*')) {
-                // Sincronizado con el modelo OrdenVenta y sus relaciones
+                // CORRECCIÓN: Se eliminó 'mensajes.usuario' para que no busque la tabla inexistente.
+                // Todo el chat se manejará vía Pusher.
                 $orden = OrdenVenta::with([
                     'cliente', 
                     'vendedor', 
                     'sucursal', 
                     'detalles.item.procesoDefault', 
-                    'mensajes.usuario',
                     'produccion.maquina' 
                 ])->findOrFail($id);
 
@@ -73,7 +73,7 @@ class OrdenVentaController extends Controller
             
             return inertia('Ventas/Ordenes/Show', ['ordenId' => $id]);
         } catch (\Exception $e) {
-            \Log::error("Error mostrando orden #{$id}: " . $e->getMessage());
+            Log::error("Error mostrando orden #{$id}: " . $e->getMessage());
             return response()->json(['error' => 'Error interno: ' . $e->getMessage()], 500);
         }
     }
@@ -125,7 +125,6 @@ class OrdenVentaController extends Controller
             foreach ($validated['items'] as $item) {
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
                 
-                // CORRECCIÓN: Usamos 'porcentaje_itbms' y eliminamos 'monto_itbms' que no está en tu DB
                 $orden->detalles()->create([
                     'item_id' => $item['item_id'],
                     'cantidad' => $item['cantidad'],
@@ -141,7 +140,7 @@ class OrdenVentaController extends Controller
             
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Error creando orden: ' . $e->getMessage());
+            Log::error('Error creando orden: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Error al crear la orden: ' . $e->getMessage());
         }
     }
@@ -154,6 +153,7 @@ class OrdenVentaController extends Controller
 
         $validated = $request->validate([
             'contacto_id' => 'required|exists:contactos,id',
+            'sucursal_id' => 'nullable|exists:sucursales,id',
             'vendedor_id' => 'nullable|exists:vendedores,id',
             'fecha_emision' => 'required|date',
             'fecha_entrega' => 'nullable|date|after_or_equal:fecha_emision',
@@ -182,6 +182,7 @@ class OrdenVentaController extends Controller
 
             $orden->update([
                 'contacto_id' => $validated['contacto_id'],
+                'sucursal_id' => $validated['sucursal_id'] ?? $orden->sucursal_id,
                 'vendedor_id' => $validated['vendedor_id'],
                 'fecha_emision' => $validated['fecha_emision'],
                 'fecha_entrega' => $validated['fecha_entrega'],
@@ -199,7 +200,6 @@ class OrdenVentaController extends Controller
                 
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
                 
-                // CORRECCIÓN: Sincronizado con nombres de columna de tu DB
                 $orden->detalles()->create([
                     'item_id' => $item['item_id'],
                     'cantidad' => $item['cantidad'],
@@ -215,6 +215,7 @@ class OrdenVentaController extends Controller
             
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Error actualizando orden: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
