@@ -10,6 +10,8 @@ class ProduccionTiempo extends Model
 
     protected $fillable = [
         'orden_produccion_id',
+        'orden_venta_id',
+        'fase',
         'maquina_id',
         'operario_id',
         'hora_inicio',
@@ -21,4 +23,9 @@ class ProduccionTiempo extends Model
         'hora_inicio' => 'datetime',
         'hora_fin' => 'datetime',
     ];
+
+    public function ordenVenta()
+    {
+        return $this->belongsTo(OrdenVenta::class);
+    }
 }

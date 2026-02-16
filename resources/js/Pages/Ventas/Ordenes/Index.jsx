@@ -6,7 +6,7 @@ export default function Index() {
     const [ordenes, setOrdenes] = useState([]);
     const [proveedores, setProveedores] = useState([]);
     const [loading, setLoading] = useState(true);
-    
+
     // Estados para Consolidación
     const [selectedIds, setSelectedIds] = useState([]);
     const [showConsolidateModal, setShowConsolidateModal] = useState(false);
@@ -49,7 +49,7 @@ export default function Index() {
     };
 
     const toggleSelect = (id) => {
-        setSelectedIds(prev => 
+        setSelectedIds(prev =>
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
         );
     };
@@ -70,12 +70,18 @@ export default function Index() {
 
     const getEstadoBadge = (estado) => {
         const badges = {
-            'Borrador': 'bg-slate-100 text-slate-700',
-            'Confirmada': 'bg-blue-100 text-blue-700',
-            'Facturada': 'bg-green-100 text-green-700',
-            'Cancelada': 'bg-red-100 text-red-700',
+            'Borrador': 'bg-slate-100 text-slate-700 border-slate-200',
+            'Confirmada': 'bg-blue-100 text-blue-700 border-blue-200',
+            'En Proceso de Diseño': 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse',
+            'Diseño Aprobado': 'bg-green-100 text-green-700 border-green-200',
+            'En Impresión': 'bg-cyan-100 text-cyan-700 border-cyan-200',
+            'En Producción': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'En Espera de Entrega': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+            'Entregado': 'bg-emerald-600 text-white',
+            'Facturada': 'bg-green-100 text-green-700 border-green-200',
+            'Cancelada': 'bg-red-100 text-red-700 border-red-200',
         };
-        return badges[estado] || 'bg-slate-100 text-slate-700';
+        return (badges[estado] || 'bg-slate-100 text-slate-700 border-slate-200') + ' border font-black';
     };
 
     const formatCurrency = (value) => {
@@ -103,7 +109,7 @@ export default function Index() {
     return (
         <AuthenticatedLayout>
             <Head title="Órdenes de Venta" />
-            
+
             <div className="max-w-7xl mx-auto px-4 py-8">
                 <div className="mb-8 flex justify-between items-start">
                     <div>
@@ -160,8 +166,8 @@ export default function Index() {
                         <thead className="bg-slate-900 text-white text-xs uppercase font-bold">
                             <tr>
                                 <th className="px-6 py-4 w-10 text-center">
-                                    <input 
-                                        type="checkbox" 
+                                    <input
+                                        type="checkbox"
                                         className="rounded border-slate-700 text-blue-600 focus:ring-blue-500 bg-slate-800 cursor-pointer"
                                         onChange={(e) => {
                                             if (e.target.checked) {
@@ -187,8 +193,8 @@ export default function Index() {
                                 ordenes.map((orden) => (
                                     <tr key={orden.id} className={`${selectedIds.includes(orden.id) ? 'bg-blue-50' : (orden.estado === 'Facturada' ? 'bg-slate-50 opacity-60' : 'hover:bg-slate-50')} transition-colors`}>
                                         <td className="px-6 py-4 text-center">
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 checked={selectedIds.includes(orden.id)}
                                                 disabled={orden.estado === 'Facturada'}
                                                 onChange={() => toggleSelect(orden.id)}
@@ -209,11 +215,11 @@ export default function Index() {
                                         <td className="px-6 py-4">
                                             <div className="flex justify-center gap-2">
                                                 <Link href={route('ordenes.show', orden.id)} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-900 hover:text-white transition shadow-sm">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                                 </Link>
                                                 {orden.estado === 'Confirmada' && (
                                                     <button onClick={() => handleConvertirFactura(orden.id)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-700 hover:text-white transition shadow-sm">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                                     </button>
                                                 )}
                                             </div>
@@ -231,13 +237,13 @@ export default function Index() {
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full border border-slate-200">
                         <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-4">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
                         </div>
                         <h3 className="text-2xl font-black text-slate-900">Consolidar Compras</h3>
                         <p className="text-slate-500 text-sm mt-1 mb-6">Selecciona el proveedor al cual se le enviará esta orden unificada.</p>
-                        
+
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Proveedor del Pedido</label>
-                        <select 
+                        <select
                             className="w-full rounded-xl border-slate-200 bg-slate-50 py-3 font-bold text-slate-700 focus:ring-indigo-500 focus:border-indigo-500 transition"
                             value={proveedorId}
                             onChange={(e) => setProveedorId(e.target.value)}
@@ -245,7 +251,7 @@ export default function Index() {
                             <option value="">Buscar en contactos...</option>
                             {proveedores.map(p => <option key={p.id} value={p.id}>{p.razon_social || p.nombre}</option>)}
                         </select>
-                        
+
                         <div className="flex gap-3 mt-8">
                             <button onClick={() => setShowConsolidateModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold hover:bg-slate-200 transition">Ignorar</button>
                             <button onClick={handleConsolidar} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">Procesar Ahora</button>

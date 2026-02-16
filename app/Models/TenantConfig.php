@@ -39,7 +39,16 @@ class TenantConfig extends Model
         'cta_ventas_id',
         'cta_itbms_id',
         'cta_devoluciones_id',
-        'cta_gasto_merma_id'
+        'cta_gasto_merma_id',
+        'cta_gasto_salario_id',
+        'cta_retenciones_id',
+        'cta_caja_banco_id',
+        'max_intentos_diseno',
+        'diseno_precio_primera_hora',
+        'diseno_precio_hora_adicional',
+        'diseno_revisiones_gratuitas',
+        'diseno_cobro_automatico',
+        'anticipo_minimo_porcentaje'
     ];
 
     /**

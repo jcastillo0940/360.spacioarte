@@ -27,9 +27,8 @@ class PliegoController extends Controller
             ->take(20)
             ->get();
 
-        $papeles = Item::where('tipo', 'Materia Prima')
-            ->where('nombre', 'like', '%Pliego%')
-            ->orWhere('nombre', 'like', '%Hoja%')
+        $papeles = Item::where('es_para_nesting', true)
+            ->where('activo', true)
             ->get();
 
         return Inertia::render('Produccion/Pliegos/Index', [

@@ -76,6 +76,9 @@ class FacturaController extends Controller
             ]);
 
             // 2. Copiar detalles y manejar inventario
+            $subtotalFactura = $orden->subtotal;
+            $itbmsFactura = $orden->itbms_total;
+
             foreach ($orden->detalles as $detalle) {
                 FacturaVentaDetalle::create([
                     'factura_venta_id' => $factura->id,
@@ -89,6 +92,37 @@ class FacturaController extends Controller
                 // Descontar del inventario
                 if ($detalle->item && $detalle->item->tipo === 'Inventariable') {
                     $detalle->item->decrement('stock_actual', $detalle->cantidad);
+                }
+            }
+
+            // 2b. Agregar línea de diseño si tiene monto calculado
+            if ($orden->diseno_monto_calculado > 0) {
+                $itemDiseno = \App\Models\Item::where('codigo', 'DIS-01')->first();
+                if ($itemDiseno) {
+                    $tasa_itbms = ($itemDiseno->tax && $itemDiseno->tax->tasa !== null) ? $itemDiseno->tax->tasa : 7.00;
+                    $monto_itbms = $orden->diseno_monto_calculado * ($tasa_itbms / 100);
+                    
+                    FacturaVentaDetalle::create([
+                        'factura_venta_id' => $factura->id,
+                        'item_id'          => $itemDiseno->id,
+                        'cantidad'         => 1,
+                        'precio_unitario'  => $orden->diseno_monto_calculado,
+                        'porcentaje_itbms' => $tasa_itbms,
+                        'total_item'       => $orden->diseno_monto_calculado + $monto_itbms,
+                    ]);
+
+                    $subtotalFactura += $orden->diseno_monto_calculado;
+                    $itbmsFactura += $monto_itbms;
+
+                    // Actualizar cabecera de factura
+                    $factura->update([
+                        'subtotal'        => $subtotalFactura,
+                        'itbms_total'     => $itbmsFactura,
+                        'total'           => $subtotalFactura + $itbmsFactura,
+                        'saldo_pendiente' => $subtotalFactura + $itbmsFactura,
+                    ]);
+
+                    $factura->refresh();
                 }
             }
 
@@ -134,10 +168,11 @@ class FacturaController extends Controller
 
     private function generateInvoiceNumber($config)
     {
-        $serie = $config->factura_serie ?? 'FV';
+        $serie = optional($config)->factura_serie ?? 'FV';
         
         // Obtener el número máximo actual
         $lastFactura = FacturaVenta::where('numero_factura', 'LIKE', $serie . '-%')
+            // Corregimos la extracción del número para que coincida con la longitud de la serie dinámicamente
             ->orderByRaw('CAST(SUBSTRING(numero_factura, ' . (strlen($serie) + 2) . ') AS UNSIGNED) DESC')
             ->first();
 
@@ -145,7 +180,7 @@ class FacturaController extends Controller
             preg_match('/\d+/', $lastFactura->numero_factura, $matches);
             $nextNum = isset($matches[0]) ? (int)$matches[0] + 1 : 1;
         } else {
-            $nextNum = $config->factura_inicio ?? 1;
+            $nextNum = optional($config)->factura_inicio ?? 1;
         }
 
         return $serie . '-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);

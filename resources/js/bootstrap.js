@@ -3,22 +3,8 @@ import axios from 'axios';
 window.axios = axios;
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
-window.route = function(name, params = {}) {
-    const routes = window.routes || {};
-    
-    if (!routes[name]) {
-        console.warn(`Route ${name} not found`);
-        return `/${name}`;
-    }
-    
-    let url = routes[name];
-    
-    Object.keys(params).forEach(key => {
-        url = url.replace(`{${key}}`, params[key]);
-    });
-    
-    return '/' + url.replace(/^\/+/, '');
-};
+// El helper de rutas 'route' es proporcionado por Ziggy (@routes en app.blade.php)
+// No lo sobrescribimos aquí para permitir el soporte de carpetas (subfolders) automáticamente.
 /**
  * Echo exposes an expressive API for subscribing to channels and listening
  * for events that are broadcast by Laravel. Echo and event broadcasting

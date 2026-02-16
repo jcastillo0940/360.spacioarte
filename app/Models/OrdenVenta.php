@@ -15,6 +15,8 @@ class OrdenVenta extends Model
         'contacto_id',
         'sucursal_id',
         'vendedor_id',
+        'user_id',
+        'referencia_externa',
         'fecha_emision',
         'fecha_entrega',
         'subtotal',
@@ -22,9 +24,35 @@ class OrdenVenta extends Model
         'total',
         'estado',
         'notas',
+        'observaciones',
         'tracking_token',
-        'estado_diseno'
+        'estado_diseno',
+        'imagen_referencia',
+        'imagen_diseno',
+        'diseno_intentos',
+        'diseno_notas',
+        'diseno_cobro_aprobado',
+        'diseno_cobro_aprobado_at',
+        'diseno_minutos_acumulados',
+        'diseno_monto_calculado',
+        'monto_abonado',
+        'metodo_pago_inicial'
     ];
+
+    public function disenoHistorial(): HasMany
+    {
+        return $this->hasMany(DisenoHistorial::class, 'orden_venta_id');
+    }
+
+    public function latestDiseno(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(DisenoHistorial::class, 'orden_venta_id')->latestOfMany();
+    }
+
+    public function tiempos(): HasMany
+    {
+        return $this->hasMany(ProduccionTiempo::class, 'orden_venta_id');
+    }
 
     protected $casts = [
         'fecha_emision' => 'date',

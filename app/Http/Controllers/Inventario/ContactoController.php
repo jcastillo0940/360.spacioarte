@@ -29,6 +29,8 @@ class ContactoController extends Controller
             'razon_social' => 'required|string|max:255',
             'tipo_identificacion' => 'required|in:RUC,Cedula,Pasaporte',
             'identificacion' => 'required|string|max:50|unique:contactos',
+            'digito_verificador' => 'nullable|string|max:10',
+            'requiere_factura_electronica' => 'boolean',
             'dv' => 'nullable|string|max:2',
             'direccion' => 'nullable|string',
             'telefono' => 'nullable|string|max:50',
@@ -40,6 +42,10 @@ class ContactoController extends Controller
         ]);
 
         $contacto = Contacto::create($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json($contacto);
+        }
 
         return redirect()->back()->with('success', 'Contacto creado correctamente');
     }

@@ -1,8 +1,11 @@
 Options +SymLinksIfOwnerMatch
+DirectoryIndex index.php
 RewriteEngine On
 
 # Allow Installatron requests
 RewriteCond %{REQUEST_FILENAME} deleteme\.\w+\.php
 RewriteRule (.*) - [L] 
 
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.php [L]

@@ -8,19 +8,22 @@ export default function Index() {
     const [editingId, setEditingId] = useState(null);
 
     const { data, setData, post, put, processing, reset, errors } = useForm({
-        codigo: '',
-        nombre: '',
-        descripcion: '',
-        tipo: 'Inventariable',
-        precio_venta: '',
-        costo_promedio: '',
-        stock_actual: 0,
-        stock_minimo: 0,
-        stock_maximo: 0,
-        tax_id: '',
-        categoria: '',
-        unidad_medida: 'UND'
+        es_para_nesting: false,
+        es_insumo: false,
+        requires_recipe: false,
+        tipo_impresion: '',
+        ancho_imprimible: '',
+        largo_imprimible: '',
+        permite_rotacion: true,
+        separacion_piezas: 0.50,
+        sangrado: 0.30,
+        procesos_ids: [],
+        papeles_ids: []
     });
+
+    const [procesos, setProcesos] = useState([]);
+    const [papeles, setPapeles] = useState([]);
+    const [activeTab, setActiveTab] = useState('basico');
 
     useEffect(() => {
         loadData();
@@ -32,6 +35,8 @@ export default function Index() {
             .then(data => {
                 setItems(data.items || []);
                 setTaxes(data.taxes || []);
+                setProcesos(data.procesos || []);
+                setPapeles(data.papeles || []);
                 if ((data.taxes || []).length > 0 && !editingId) {
                     setData('tax_id', data.taxes[0].id);
                 }
@@ -64,8 +69,13 @@ export default function Index() {
     };
 
     const handleEdit = (item) => {
-        setData(item);
+        setData({
+            ...item,
+            procesos_ids: item.procesos_compatibles?.map(p => p.id) || [],
+            papeles_ids: item.papeles_compatibles?.map(p => p.id) || []
+        });
         setEditingId(item.id);
+        setActiveTab('basico');
     };
 
     const formatCurrency = (value) => {
@@ -75,7 +85,7 @@ export default function Index() {
     return (
         <AuthenticatedLayout>
             <Head title="Gestión de Inventario" />
-            
+
             <div className="max-w-7xl mx-auto">
                 <div className="mb-8">
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
@@ -93,186 +103,306 @@ export default function Index() {
                         <h2 className="text-lg font-bold text-slate-800 mb-4">
                             {editingId ? 'Editar Item' : 'Nuevo Item'}
                         </h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Código / SKU</label>
-                                <input 
-                                    type="text"
-                                    value={data.codigo}
-                                    onChange={e => setData('codigo', e.target.value)}
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                    placeholder="PROD-001"
-                                    required
-                                />
-                                {errors.codigo && <span className="text-red-500 text-xs">{errors.codigo}</span>}
-                            </div>
+                        <div className="flex border-b border-slate-200 mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('basico')}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-widest ${activeTab === 'basico' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-400'}`}
+                            >
+                                Básico
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('produccion')}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-widest ${activeTab === 'produccion' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-400'}`}
+                            >
+                                Producción {data.requires_recipe && <span className="ml-1 w-2 h-2 bg-green-500 rounded-full inline-block"></span>}
+                            </button>
+                        </div>
 
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Nombre del Producto</label>
-                                <input 
-                                    type="text"
-                                    value={data.nombre}
-                                    onChange={e => setData('nombre', e.target.value)}
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Descripción</label>
-                                <textarea 
-                                    value={data.descripcion || ''}
-                                    onChange={e => setData('descripcion', e.target.value)}
-                                    rows="2"
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Tipo</label>
-                                <select 
-                                    value={data.tipo}
-                                    onChange={e => setData('tipo', e.target.value)}
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                >
-                                    <option value="Inventariable">Producto Físico</option>
-                                    <option value="Servicio">Servicio</option>
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                        {activeTab === 'basico' ? (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-left-2 transition-all duration-300">
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Precio Venta</label>
-                                    <input 
-                                        type="number"
-                                        step="0.01"
-                                        value={data.precio_venta}
-                                        onChange={e => setData('precio_venta', e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Código / SKU</label>
+                                    <input
+                                        type="text"
+                                        value={data.codigo}
+                                        onChange={e => setData('codigo', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition shadow-sm"
+                                        placeholder="PROD-001"
+                                        required
+                                    />
+                                    {errors.codigo && <span className="text-red-500 text-xs font-bold">{errors.codigo}</span>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Nombre del Producto</label>
+                                    <input
+                                        type="text"
+                                        value={data.nombre}
+                                        onChange={e => setData('nombre', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition shadow-sm"
                                         required
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Costo</label>
-                                    <input 
-                                        type="number"
-                                        step="0.01"
-                                        value={data.costo_promedio}
-                                        onChange={e => setData('costo_promedio', e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                        required
-                                    />
-                                </div>
-                            </div>
 
-                            {data.tipo === 'Inventariable' && (
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div>
-                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Stock Actual</label>
-                                        <input 
-                                            type="number"
-                                            step="0.01"
-                                            value={data.stock_actual}
-                                            onChange={e => setData('stock_actual', e.target.value)}
-                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Stock Mín</label>
-                                        <input 
-                                            type="number"
-                                            step="0.01"
-                                            value={data.stock_minimo}
-                                            onChange={e => setData('stock_minimo', e.target.value)}
-                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Stock Máx</label>
-                                        <input 
-                                            type="number"
-                                            step="0.01"
-                                            value={data.stock_maximo}
-                                            onChange={e => setData('stock_maximo', e.target.value)}
-                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Impuesto</label>
-                                    <select 
-                                        value={data.tax_id}
-                                        onChange={e => setData('tax_id', e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                        required
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Tipo</label>
+                                    <select
+                                        value={data.tipo}
+                                        onChange={e => setData('tipo', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition font-bold shadow-sm"
                                     >
-                                        {taxes.length === 0 && <option value="">Cargando impuestos...</option>}
-                                        {taxes.map(tax => (
-                                            <option key={tax.id} value={tax.id}>
-                                                {tax.nombre} ({tax.tasa}%)
-                                            </option>
-                                        ))}
+                                        <option value="Inventariable">Producto Físico</option>
+                                        <option value="Servicio">Servicio</option>
+                                        <option value="Materia Prima">Materia Prima / Material</option>
+                                        <option value="Producto Terminado">Producto Terminado</option>
+                                        <option value="Consumible">Consumible</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Unidad</label>
-                                    <select 
-                                        value={data.unidad_medida}
-                                        onChange={e => setData('unidad_medida', e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                    >
-                                        <option value="UND">Unidad</option>
-                                        <option value="KG">Kilogramo</option>
-                                        <option value="LB">Libra</option>
-                                        <option value="LT">Litro</option>
-                                        <option value="MT">Metro</option>
-                                        <option value="CJ">Caja</option>
-                                    </select>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Precio Venta</label>
+                                        <input
+                                            type="number" step="0.01"
+                                            value={data.precio_venta}
+                                            onChange={e => setData('precio_venta', e.target.value)}
+                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition font-bold"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Costo</label>
+                                        <input
+                                            type="number" step="0.01"
+                                            value={data.costo_promedio}
+                                            onChange={e => setData('costo_promedio', e.target.value)}
+                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition font-bold"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Impuesto</label>
+                                        <select
+                                            value={data.tax_id}
+                                            onChange={e => setData('tax_id', e.target.value)}
+                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition font-bold"
+                                            required
+                                        >
+                                            {taxes.map(tax => (
+                                                <option key={tax.id} value={tax.id}>{tax.nombre} ({tax.tasa}%)</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Unidad</label>
+                                        <select
+                                            value={data.unidad_medida}
+                                            onChange={e => setData('unidad_medida', e.target.value)}
+                                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition font-bold"
+                                        >
+                                            <option value="UND">Unidad</option>
+                                            <option value="KG">Kilogramo</option>
+                                            <option value="LT">Litro</option>
+                                            <option value="MT">Metro</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-slate-50 rounded-xl space-y-4 border border-slate-200">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2">Opciones de Sistema</h3>
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox" id="es_para_nesting"
+                                                checked={data.es_para_nesting}
+                                                onChange={e => setData('es_para_nesting', e.target.checked)}
+                                                className="w-4 h-4 rounded border-slate-300 text-green-600 focus:ring-green-500"
+                                            />
+                                            <label htmlFor="es_para_nesting" className="text-xs font-black text-slate-700 uppercase cursor-pointer">Disponible para Nesting / Pliegos</label>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox" id="es_insumo"
+                                                checked={data.es_insumo}
+                                                onChange={e => setData('es_insumo', e.target.checked)}
+                                                className="w-4 h-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                                            />
+                                            <label htmlFor="es_insumo" className="text-xs font-black text-slate-700 uppercase cursor-pointer">Es Insumo (No venta al público)</label>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                        ) : (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-right-2 transition-all duration-300">
+                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="requires_recipe"
+                                            checked={data.requires_recipe}
+                                            onChange={e => setData('requires_recipe', e.target.checked)}
+                                            className="w-5 h-5 rounded-lg border-blue-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="requires_recipe" className="font-black text-sm text-blue-900 uppercase">¿Este producto requiere receta de producción?</label>
+                                    </div>
+                                    <p className="text-[10px] text-blue-600 font-bold mt-2 uppercase">Activa esto para configurar máquinas, dimensiones y nesting inteligente.</p>
+                                </div>
 
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Categoría</label>
-                                <input 
-                                    type="text"
-                                    value={data.categoria || ''}
-                                    onChange={e => setData('categoria', e.target.value)}
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                                    placeholder="Electrónica, Alimentos, etc."
-                                />
-                            </div>
+                                {data.requires_recipe && (
+                                    <div className="space-y-6">
+                                        <div>
+                                            <label className="block text-xs font-black uppercase text-slate-500 mb-2">Tipo de Impresión / Tecnología</label>
+                                            <select
+                                                value={data.tipo_impresion}
+                                                onChange={e => setData('tipo_impresion', e.target.value)}
+                                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 transition font-black bg-white"
+                                                required={data.requires_recipe}
+                                            >
+                                                <option value="">Seleccione tecnología...</option>
+                                                <option value="Sublimación">Sublimación</option>
+                                                <option value="Láser">Láser (Tóner)</option>
+                                                <option value="Offset">Offset</option>
+                                                <option value="UV">Cama Plana UV</option>
+                                                <option value="Otros">Otros</option>
+                                            </select>
+                                        </div>
 
-                            <div className="flex gap-2">
-                                <button 
-                                    type="submit"
-                                    disabled={processing}
-                                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition disabled:opacity-50"
-                                >
-                                    {editingId ? 'Actualizar' : 'Guardar'}
-                                </button>
-                                {editingId && (
-                                    <button 
-                                        type="button"
-                                        onClick={() => {
-                                            reset();
-                                            setEditingId(null);
-                                        }}
-                                        className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg font-bold hover:bg-slate-300 transition"
-                                    >
-                                        Cancelar
-                                    </button>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Ancho Fijo (cm)</label>
+                                                <input
+                                                    type="number" step="0.01"
+                                                    value={data.ancho_imprimible}
+                                                    onChange={e => setData('ancho_imprimible', e.target.value)}
+                                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 font-black"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Alto Fijo (cm)</label>
+                                                <input
+                                                    type="number" step="0.01"
+                                                    value={data.largo_imprimible}
+                                                    onChange={e => setData('largo_imprimible', e.target.value)}
+                                                    className="w-full px-4 py-3 rounded-lg border border-slate-300 font-black"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                                            <h4 className="text-[10px] font-black uppercase text-slate-400">Reglas de Nesting</h4>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="checkbox" id="permite_rotacion"
+                                                    checked={data.permite_rotacion}
+                                                    onChange={e => setData('permite_rotacion', e.target.checked)}
+                                                    className="w-4 h-4 rounded border-slate-300 text-blue-600"
+                                                />
+                                                <label htmlFor="permite_rotacion" className="text-xs font-black uppercase text-slate-700">Permitir rotación para optimizar</label>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Separación (cm)</label>
+                                                    <input
+                                                        type="number" step="0.01"
+                                                        value={data.separacion_piezas}
+                                                        onChange={e => setData('separacion_piezas', e.target.value)}
+                                                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Sangrado (cm)</label>
+                                                    <input
+                                                        type="number" step="0.01"
+                                                        value={data.sangrado}
+                                                        onChange={e => setData('sangrado', e.target.value)}
+                                                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Multi-Selectores filtrados */}
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Máquinas Compatibles ({data.tipo_impresion || 'Todas'})</label>
+                                                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white space-y-1">
+                                                    {procesos
+                                                        .filter(p => !data.tipo_impresion || p.tipo_maquina.includes(data.tipo_impresion) || p.categoria_tecnologia?.includes(data.tipo_impresion))
+                                                        .map(p => (
+                                                            <label key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer transition-colors">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={data.procesos_ids.includes(p.id)}
+                                                                    onChange={e => {
+                                                                        const ids = e.target.checked
+                                                                            ? [...data.procesos_ids, p.id]
+                                                                            : data.procesos_ids.filter(id => id !== p.id);
+                                                                        setData('procesos_ids', ids);
+                                                                    }}
+                                                                    className="w-4 h-4 rounded border-slate-300 text-blue-600"
+                                                                />
+                                                                <span className="text-xs font-bold text-slate-700">{p.nombre}</span>
+                                                            </label>
+                                                        ))}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Papeles / Soportes Compatibles</label>
+                                                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white space-y-1">
+                                                    {papeles.map(p => (
+                                                        <label key={p.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer transition-colors">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={data.papeles_ids.includes(p.id)}
+                                                                onChange={e => {
+                                                                    const ids = e.target.checked
+                                                                        ? [...data.papeles_ids, p.id]
+                                                                        : data.papeles_ids.filter(id => id !== p.id);
+                                                                    setData('papeles_ids', ids);
+                                                                }}
+                                                                className="w-4 h-4 rounded border-slate-300 text-blue-600"
+                                                            />
+                                                            <span className="text-xs font-bold text-slate-700">{p.nombre}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
+                        )}
+
+                        <div className="flex gap-2 mt-8 pt-6 border-t border-slate-100">
+                            <button
+                                type="submit"
+                                disabled={processing}
+                                className="flex-1 px-6 py-4 bg-slate-900 text-white rounded-xl font-black uppercase tracking-tighter hover:bg-blue-600 transition disabled:opacity-50 shadow-lg shadow-slate-900/10"
+                            >
+                                {editingId ? 'Actualizar Producto' : 'Registrar Producto'}
+                            </button>
+                            {editingId && (
+                                <button
+                                    type="button"
+                                    onClick={() => { reset(); setEditingId(null); setActiveTab('basico'); }}
+                                    className="px-6 py-4 bg-slate-100 text-slate-500 rounded-xl font-black uppercase tracking-tighter hover:bg-slate-200 transition"
+                                >
+                                    Cancelar
+                                </button>
+                            )}
                         </div>
                     </form>
 
                     {/* Listado */}
                     <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                         <div className="p-4 bg-slate-50 border-b border-slate-200">
-                            <input 
+                            <input
                                 type="text"
                                 placeholder="Buscar por código o nombre..."
                                 className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -305,18 +435,23 @@ export default function Index() {
                                             <tr key={item.id} className="hover:bg-slate-50 transition">
                                                 <td className="px-6 py-4">
                                                     <span className="font-mono font-bold text-slate-900">{item.codigo}</span>
+                                                    {item.es_para_nesting && <span className="block text-[8px] bg-green-100 text-green-700 px-1 rounded-full text-center mt-1 font-black">NESTING</span>}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="font-bold text-slate-900">{item.nombre}</div>
-                                                    <div className="text-sm text-slate-500">{item.categoria || 'Sin categoría'}</div>
+                                                    <div className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{item.categoria || 'Sin categoría'}</div>
+                                                    <div className="flex gap-1 mt-1">
+                                                        {item.es_insumo && <span className="text-[8px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-black uppercase">Insumo</span>}
+                                                        {item.requires_recipe && <span className="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-black uppercase">Con Receta</span>}
+                                                        {item.tipo_impresion && <span className="text-[8px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-black uppercase">{item.tipo_impresion}</span>}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    {item.tipo === 'Inventariable' ? (
-                                                        <span className={`font-bold ${
-                                                            item.stock_actual <= item.stock_minimo 
-                                                                ? 'text-red-600' 
-                                                                : 'text-slate-900'
-                                                        }`}>
+                                                    {item.tipo !== 'Servicio' ? (
+                                                        <span className={`font-bold ${item.stock_actual <= item.stock_minimo
+                                                            ? 'text-red-600'
+                                                            : 'text-slate-900'
+                                                            }`}>
                                                             {item.stock_actual} {item.unidad_medida}
                                                         </span>
                                                     ) : (
@@ -346,6 +481,6 @@ export default function Index() {
                     </div>
                 </div>
             </div>
-        </AuthenticatedLayout>
+        </AuthenticatedLayout >
     );
 }

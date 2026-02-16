@@ -10,7 +10,7 @@ export default function Login() {
 
     const submit = (e) => {
         e.preventDefault();
-        post('/login');
+        post(route('login'));
     };
 
     return (

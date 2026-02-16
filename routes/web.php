@@ -38,14 +38,21 @@ use App\Http\Controllers\PWA\MobileSyncController;
 | Web Routes
 |--------------------------------------------------------------------------
 */
+Route::get('/session-test', function () {
+    $count = session('test_count', 0) + 1;
+    session(['test_count' => $count]);
+    return "Session count: " . $count;
+});
 
 // ========================================================================
 //  RUTAS PÚBLICAS (Sin Autenticación)
 // ========================================================================
 
 Route::middleware('guest')->group(function () {
-    Route::get('/', [LoginController::class, 'create'])->name('login');
-    Route::post('login', [LoginController::class, 'store']);
+    Route::get('login', [LoginController::class, 'create'])->name('login');
+    Route::post('login', [LoginController::class, 'store'])->middleware('throttle:login');
+    // Redireccionamos la raíz al login para mayor claridad
+    Route::get('/', function() { return redirect()->route('login'); });
 });
 
 // Portal del Cliente - Seguimiento y Aprobación (SRS Punto 9)
@@ -55,7 +62,28 @@ Route::prefix('tracking')->group(function () {
     
     // CORRECCIÓN: Se ajustó 'approve' para que coincida con la petición de la vista React
     Route::post('/{token}/approve', [CustomerPortalController::class, 'approveDesign'])->name('tracking.aprobar');
+    Route::post('/{token}/reject', [CustomerPortalController::class, 'rejectDesign'])->name('tracking.rechazar');
+    Route::post('/{token}/approve-billing', [CustomerPortalController::class, 'approveBilling'])->name('tracking.aprobar_cobro');
 });
+
+// Ruta rápida para Diseñadores (Carga de diseño)
+Route::middleware(['auth'])->get('/diseno/subir', function() { 
+    return Inertia::render('Ventas/Diseno/Upload'); 
+})->name('diseno.view_upload');
+
+// API Interna para Diseño (Usando Sesión Web)
+Route::middleware(['auth'])->prefix('api')->group(function () {
+    Route::get('/ventas/ordenes/{id}/historial', [App\Http\Controllers\Ventas\OrdenVentaController::class, 'getHistorial']);
+    Route::get('/diseno/search', [App\Http\Controllers\Ventas\DesignController::class, 'search']);
+    Route::post('/diseno/upload', [App\Http\Controllers\Ventas\DesignController::class, 'upload']);
+    Route::post('/diseno/timer/start', [App\Http\Controllers\Ventas\DesignController::class, 'startTimer']);
+    Route::post('/diseno/timer/stop', [App\Http\Controllers\Ventas\DesignController::class, 'stopTimer']);
+    Route::post('/diseno/approve-billing', [App\Http\Controllers\Ventas\DesignController::class, 'approveBillingForDesign']);
+    Route::get('/produccion/kds/data', [App\Http\Controllers\Produccion\KdsController::class, 'getData']);
+});
+
+// KDS Board
+Route::get('/produccion/kds', [App\Http\Controllers\Produccion\KdsController::class, 'index'])->name('produccion.kds')->middleware('auth');
 
 // ========================================================================
 //  RUTAS PROTEGIDAS (ERP CORE + PWA + PRODUCCIÓN)
@@ -97,7 +125,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     //  RUTAS API INTERNAS (JSON para IndexedDB / React)
     // ========================================================================
     Route::prefix('api')->group(function () {
-        Route::get('/configuracion', [SettingsController::class, 'index']);
+        Route::get('/configuracion', [SettingsController::class, 'index'])->name('api.settings.index');
         Route::get('/configuracion/parametros', [ParametrizacionController::class, 'index']);
         Route::get('/configuracion/vendedores', [VendedorController::class, 'index']);
         Route::get('/inventario/items', [ItemController::class, 'index']);
@@ -110,6 +138,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/ventas/ordenes', [OrdenVentaController::class, 'index']);
         Route::get('/ventas/ordenes/datos', [OrdenVentaController::class, 'getDatos']);
         Route::get('/ventas/ordenes/{orden}', [OrdenVentaController::class, 'show']);
+        Route::post('/ventas/ordenes/{orden}/reimprimir', [OrdenVentaController::class, 'reimprimir']);
         Route::get('/ventas/facturas', [FacturaController::class, 'index']);
         Route::get('/ventas/facturas/{factura}', [FacturaController::class, 'show']);
         Route::get('/ventas/cobros/datos', [CobroController::class, 'getDatos']);
@@ -148,7 +177,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     // ========================================================================
     
     // CONFIGURACIÓN
-    Route::prefix('configuracion')->group(function () {
+    Route::prefix('configuracion')->middleware(['role:Administrador Total'])->group(function () {
         Route::get('/', function() { return Inertia::render('Config/Settings/Index'); })->name('settings.index');
         Route::post('/actualizar', [SettingsController::class, 'update'])->name('settings.update');
         Route::prefix('parametros')->group(function () {
@@ -160,6 +189,10 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::get('/', function() { return Inertia::render('Config/Vendedores/Index'); })->name('vendedores.index');
             Route::post('/', [VendedorController::class, 'store'])->name('vendedores.store');
             Route::put('/{vendedor}', [VendedorController::class, 'update'])->name('vendedores.update');
+        });
+        Route::prefix('diseno')->group(function () {
+            Route::get('/', [App\Http\Controllers\Config\DesignConfigController::class, 'index'])->name('config.diseno.index');
+            Route::post('/actualizar', [App\Http\Controllers\Config\DesignConfigController::class, 'update'])->name('config.diseno.update');
         });
     });
     
@@ -179,7 +212,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
     
     // CONTABILIDAD
-    Route::prefix('contabilidad')->group(function () {
+    Route::prefix('contabilidad')->middleware(['role:Administrador Total'])->group(function () {
         Route::get('/catalogo', function() { return Inertia::render('Contabilidad/Cuentas/Index'); })->name('accounts.index');
         Route::post('/cuentas', [AccountController::class, 'store'])->name('accounts.store');
         Route::prefix('bancos')->group(function () {
@@ -271,7 +304,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
     
     // RRHH
-    Route::prefix('rrhh')->group(function () {
+    // Se asume que solo el administrador maneja RRHH por el momento
+    Route::prefix('rrhh')->middleware(['role:Administrador Total'])->group(function () {
         Route::get('/empleados', function() { return Inertia::render('RRHH/Empleados/Index'); })->name('rrhh.empleados.index');
         Route::post('/empleados', [EmpleadoController::class, 'store'])->name('rrhh.empleados.store');
         Route::put('/empleados/{empleado}', [EmpleadoController::class, 'update'])->name('rrhh.empleados.update');

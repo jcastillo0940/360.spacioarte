@@ -14,11 +14,19 @@ class OrdenProduccion extends Model
         'orden_venta_id',
         'proceso_id',
         'item_id', // Materia prima base (ej. Taza Blanca)
+        'materia_prima_id', // Papel/Soporte específico de la receta
+        'pliegos',
+        'capacidad_nesting',
         'cantidad',
         'estado',
         'fecha_entrega_proyectada',
         'notas_operario'
     ];
+
+    public function materiaUsada(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'materia_prima_id');
+    }
 
     public function venta(): BelongsTo
     {

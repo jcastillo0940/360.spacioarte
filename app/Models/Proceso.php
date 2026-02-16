@@ -13,7 +13,14 @@ class Proceso extends Model
 
     protected $fillable = [
         'nombre', 
-        'tipo_maquina', 
+        'tipo_maquina',
+        'categoria_tecnologia',
+        'ancho_maximo_cm',
+        'largo_maximo_cm',
+        'tiempo_setup_minutos',
+        'tiempo_estimado_por_unidad',
+        'permite_nesting',
+        'margen_seguridad_cm',
         'costo_operativo_promedio', 
         'capacidad_diaria', 
         'activo'

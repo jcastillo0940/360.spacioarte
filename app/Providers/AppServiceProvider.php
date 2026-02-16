@@ -11,11 +11,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Indicamos a Laravel que la ruta pública real es public_html
-        // Esto corrige problemas con las rutas de imágenes y archivos cargados
-        $this->app->bind('path.public', function() {
-            return base_path('public_html');
-        });
+        //
     }
 
     /**
@@ -23,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($request->email.$request->ip());
+        });
     }
 }

@@ -12,6 +12,7 @@ const appName = import.meta.env.VITE_APP_NAME || 'ERP Pro';
 window.route = ziggyRoute;
 
 // Registro del Service Worker para PWA
+/* 
 if ("serviceWorker" in navigator) {
     registerSW({
         immediate: true,
@@ -23,6 +24,7 @@ if ("serviceWorker" in navigator) {
         },
     });
 }
+*/
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,

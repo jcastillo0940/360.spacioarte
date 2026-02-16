@@ -8,6 +8,7 @@ use App\Models\Contacto;
 use App\Models\Item;
 use App\Models\Vendedor;
 use App\Models\OrdenProduccion;
+use App\Models\DisenoHistorial;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -32,16 +33,25 @@ class OrdenVentaController extends Controller
         try {
             $clientes = Contacto::where('es_cliente', true)->get();
             
-            $productos = Item::with(['tax', 'procesoDefault'])
+            $productos = Item::with(['tax', 'procesosCompatibles', 'papelesCompatibles'])
                 ->where('activo', true)
+                ->where('es_insumo', false)
                 ->get();
 
             $vendedores = Vendedor::where('activo', true)->get();
+
+            // Identificar si el usuario actual es un vendedor
+            $vendedorAsignado = Vendedor::where('user_id', auth()->id())->first();
+            
+            $config = \App\Models\TenantConfig::getSettings();
             
             return response()->json([
                 'clientes' => $clientes,
                 'productos' => $productos,
-                'vendedores' => $vendedores
+                'vendedores' => $vendedores,
+                'payment_terms' => \App\Models\PaymentTerm::all(),
+                'vendedor_asignado_id' => $vendedorAsignado ? $vendedorAsignado->id : null,
+                'min_anticipo_porcentaje' => $config->anticipo_minimo_porcentaje ?? 50
             ]);
         } catch (\Exception $e) {
             Log::error('Error en getDatos OrdenVenta: ' . $e->getMessage());
@@ -65,7 +75,8 @@ class OrdenVentaController extends Controller
                     'vendedor', 
                     'sucursal', 
                     'detalles.item.procesoDefault', 
-                    'produccion.maquina' 
+                    'produccion.maquina',
+                    'tiempos'
                 ])->findOrFail($id);
 
                 return response()->json($orden);
@@ -90,7 +101,12 @@ class OrdenVentaController extends Controller
             'items.*.item_id' => 'required|exists:items,id',
             'items.*.cantidad' => 'required|numeric|min:0.01',
             'items.*.precio_unitario' => 'required|numeric|min:0',
-            'items.*.tasa_itbms' => 'required|numeric|min:0|max:100'
+            'items.*.tasa_itbms' => 'required|numeric|min:0|max:100',
+            'items.*.proceso_id' => 'nullable|exists:procesos,id',
+            'items.*.material_id' => 'nullable|exists:items,id',
+            'items.*.pliegos_necesarios' => 'nullable|numeric',
+            'items.*.capacidad_por_pliego' => 'nullable|integer',
+            'items.*.total_piezas_calculadas' => 'nullable|integer',
         ]);
 
         DB::beginTransaction();
@@ -109,6 +125,11 @@ class OrdenVentaController extends Controller
             $ultimaOrden = OrdenVenta::latest('id')->first();
             $numeroOrden = 'OV-' . str_pad(($ultimaOrden ? $ultimaOrden->id + 1 : 1), 6, '0', STR_PAD_LEFT);
 
+            $pathReferencia = null;
+            if ($request->hasFile('imagen_referencia')) {
+                $pathReferencia = $request->file('imagen_referencia')->store('referencias', 'public');
+            }
+
             $orden = OrdenVenta::create([
                 'numero_orden' => $numeroOrden,
                 'contacto_id' => $validated['contacto_id'],
@@ -119,11 +140,33 @@ class OrdenVentaController extends Controller
                 'subtotal' => $subtotal,
                 'itbms_total' => $itbms_total,
                 'total' => $total,
-                'estado' => 'Borrador'
+                'monto_abonado' => $request->input('monto_abonado', 0),
+                'metodo_pago_inicial' => $request->input('metodo_pago_inicial'),
+                'estado' => 'Borrador',
+                'imagen_referencia' => $pathReferencia
+            ]);
+
+            // Crear Factura Automática
+            $ultimaFactura = \App\Models\FacturaVenta::latest('id')->first();
+            $numeroFactura = 'FAC-' . str_pad(($ultimaFactura ? $ultimaFactura->id + 1 : 1), 6, '0', STR_PAD_LEFT);
+            
+            $factura = \App\Models\FacturaVenta::create([
+                'numero_factura' => $numeroFactura,
+                'contacto_id' => $orden->contacto_id,
+                'vendedor_id' => $orden->vendedor_id,
+                'orden_venta_id' => $orden->id,
+                'fecha_emision' => $orden->fecha_emision,
+                'fecha_vencimiento' => $orden->fecha_entrega,
+                'subtotal' => $orden->subtotal,
+                'itbms_total' => $orden->itbms_total,
+                'total' => $orden->total,
+                'saldo_pendiente' => $orden->total - $orden->monto_abonado,
+                'estado' => $orden->monto_abonado >= $orden->total ? 'Pagada' : 'Pendiente'
             ]);
 
             foreach ($validated['items'] as $item) {
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
+                $lineaTotal = $lineaSubtotal + ($lineaSubtotal * ($item['tasa_itbms'] / 100));
                 
                 $orden->detalles()->create([
                     'item_id' => $item['item_id'],
@@ -131,7 +174,20 @@ class OrdenVentaController extends Controller
                     'precio_unitario' => $item['precio_unitario'],
                     'subtotal' => $lineaSubtotal,
                     'porcentaje_itbms' => $item['tasa_itbms'], 
-                    'total' => $lineaSubtotal + ($lineaSubtotal * ($item['tasa_itbms'] / 100))
+                    'total' => $lineaTotal,
+                    'proceso_id' => $item['proceso_id'] ?? null,
+                    'material_id' => $item['material_id'] ?? null,
+                    'pliegos_necesarios' => $item['pliegos_necesarios'] ?? null,
+                    'capacidad_por_pliego' => $item['capacidad_por_pliego'] ?? null,
+                    'total_piezas_calculadas' => $item['total_piezas_calculadas'] ?? null,
+                ]);
+
+                $factura->detalles()->create([
+                    'item_id' => $item['item_id'],
+                    'cantidad' => $item['cantidad'],
+                    'precio_unitario' => $item['precio_unitario'],
+                    'porcentaje_itbms' => $item['tasa_itbms'],
+                    'total_item' => $lineaTotal
                 ]);
             }
 
@@ -161,7 +217,13 @@ class OrdenVentaController extends Controller
             'items' => 'required|array|min:1',
             'items.*.item_id' => 'required|exists:items,id',
             'items.*.cantidad' => 'required|numeric|min:0.01',
-            'items.*.precio_unitario' => 'required|numeric|min:0'
+            'items.*.precio_unitario' => 'required|numeric|min:0',
+            'items.*.tasa_itbms' => 'nullable|numeric|min:0|max:100',
+            'items.*.proceso_id' => 'nullable|exists:procesos,id',
+            'items.*.material_id' => 'nullable|exists:items,id',
+            'items.*.pliegos_necesarios' => 'nullable|numeric',
+            'items.*.capacidad_por_pliego' => 'nullable|integer',
+            'items.*.total_piezas_calculadas' => 'nullable|integer',
         ]);
 
         DB::beginTransaction();
@@ -170,8 +232,12 @@ class OrdenVentaController extends Controller
             $itbms_total = 0;
             
             foreach ($validated['items'] as $item) {
-                $producto = Item::with('tax')->find($item['item_id']);
-                $tasa_itbms = $producto->tax ? $producto->tax->porcentaje : 0;
+                // Si viene en el request, usamos esa tasa, si no, intentamos traerla del producto (o 0 si no existe)
+                $tasa_itbms = $item['tasa_itbms'] ?? 0;
+                if (!isset($item['tasa_itbms'])) {
+                    $producto = Item::with('tax')->find($item['item_id']);
+                    $tasa_itbms = $producto->tax ? $producto->tax->porcentaje : 0;
+                }
                 
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
                 $subtotal += $lineaSubtotal;
@@ -195,8 +261,11 @@ class OrdenVentaController extends Controller
             $orden->detalles()->delete();
 
             foreach ($validated['items'] as $item) {
-                $producto = Item::with('tax')->find($item['item_id']);
-                $tasa_itbms = $producto->tax ? $producto->tax->porcentaje : 0;
+                $tasa_itbms = $item['tasa_itbms'] ?? 0;
+                if (!isset($item['tasa_itbms'])) {
+                    $producto = Item::with('tax')->find($item['item_id']);
+                    $tasa_itbms = $producto->tax ? $producto->tax->porcentaje : 0;
+                }
                 
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
                 
@@ -206,7 +275,12 @@ class OrdenVentaController extends Controller
                     'precio_unitario' => $item['precio_unitario'],
                     'subtotal' => $lineaSubtotal,
                     'porcentaje_itbms' => $tasa_itbms,
-                    'total' => $lineaSubtotal + ($lineaSubtotal * ($tasa_itbms / 100))
+                    'total' => $lineaSubtotal + ($lineaSubtotal * ($tasa_itbms / 100)),
+                    'proceso_id' => $item['proceso_id'] ?? null,
+                    'material_id' => $item['material_id'] ?? null,
+                    'pliegos_necesarios' => $item['pliegos_necesarios'] ?? null,
+                    'capacidad_por_pliego' => $item['capacidad_por_pliego'] ?? null,
+                    'total_piezas_calculadas' => $item['total_piezas_calculadas'] ?? null,
                 ]);
             }
 
@@ -220,10 +294,75 @@ class OrdenVentaController extends Controller
         }
     }
 
+    public function reimprimir(OrdenVenta $orden)
+    {
+        DB::beginTransaction();
+        try {
+            // Regresar estado
+            $orden->update(['estado' => 'En Impresión']);
+
+            // Eliminar órdenes de producción previas que no estén terminadas 
+            // O simplemente crear nuevas. El usuario usualmente quiere nuevas tareas.
+            foreach ($orden->detalles as $detalle) {
+                if ($detalle->item->requires_recipe) {
+                    OrdenProduccion::create([
+                        'orden_venta_id' => $orden->id,
+                        'proceso_id'     => $detalle->proceso_id,
+                        'item_id'        => $detalle->material_id ?? $detalle->item_id,
+                        'materia_prima_id' => $detalle->material_id,
+                        'cantidad'       => $detalle->cantidad,
+                        'pliegos'        => $detalle->pliegos_necesarios,
+                        'capacidad_nesting' => $detalle->capacidad_por_pliego,
+                        'estado'         => 'Pendiente',
+                        'fecha_entrega_proyectada' => $orden->fecha_entrega,
+                        'notas_operario' => 'RE-IMPRESIÓN solicitada desde ventas.'
+                    ]);
+                }
+            }
+
+            DB::commit();
+            return response()->json(['message' => 'Orden enviada a re-impresión']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function updateEstado(Request $request, OrdenVenta $orden)
     {
         $validated = $request->validate(['estado' => 'required|in:Borrador,Confirmada,Facturada,Cancelada']);
+        
+        $oldEstado = $orden->estado;
         $orden->update(['estado' => $validated['estado']]);
+
+        // Si cambia a Confirmada, generar órdenes de producción
+        if ($validated['estado'] === 'Confirmada' && $oldEstado !== 'Confirmada') {
+            // Verificar si ya existen para no duplicar
+            if ($orden->ordenesProduccion()->count() === 0) {
+                foreach ($orden->detalles as $detalle) {
+                    if ($detalle->item->requires_recipe) {
+                        OrdenProduccion::create([
+                            'orden_venta_id' => $orden->id,
+                            'proceso_id'     => $detalle->proceso_id,
+                            'item_id'        => $detalle->material_id ?? $detalle->item_id,
+                            'materia_prima_id' => $detalle->material_id,
+                            'cantidad'       => $detalle->cantidad,
+                            'pliegos'        => $detalle->pliegos_necesarios,
+                            'capacidad_nesting' => $detalle->capacidad_por_pliego,
+                            'estado'         => 'Pendiente',
+                            'fecha_entrega_proyectada' => $orden->fecha_entrega
+                        ]);
+                    }
+                }
+            }
+        }
+
         return redirect()->back()->with('success', 'Estado actualizado');
+    }
+
+    public function getHistorial($id)
+    {
+        $orden = OrdenVenta::with('disenoHistorial')->findOrFail($id);
+        return response()->json($orden->disenoHistorial);
     }
 }

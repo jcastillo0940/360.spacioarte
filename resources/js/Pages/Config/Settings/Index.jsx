@@ -18,7 +18,7 @@ export default function Index() {
     });
 
     useEffect(() => {
-        fetch('/api/configuracion')
+        fetch(route('api.settings.index'))
             .then(res => res.json())
             .then(data => {
                 setSettings(data);
@@ -28,7 +28,7 @@ export default function Index() {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        post('/configuracion/actualizar', {
+        post(route('settings.update'), {
             onSuccess: () => alert('Configuración actualizada')
         });
     };
@@ -36,7 +36,7 @@ export default function Index() {
     return (
         <AuthenticatedLayout>
             <Head title="Configuración del Sistema" />
-            
+
             <div className="max-w-4xl mx-auto">
                 <div className="mb-8">
                     <h1 className="text-3xl font-black text-slate-900">Configuración General</h1>
@@ -56,8 +56,8 @@ export default function Index() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Razón Social</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={data.razon_social}
                                         onChange={e => setData('razon_social', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -66,8 +66,8 @@ export default function Index() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">RUC</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={data.ruc}
                                         onChange={e => setData('ruc', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -75,8 +75,8 @@ export default function Index() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">DV</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         maxLength="2"
                                         value={data.dv}
                                         onChange={e => setData('dv', e.target.value)}
@@ -97,8 +97,8 @@ export default function Index() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Teléfono</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={data.telefono}
                                         onChange={e => setData('telefono', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -106,8 +106,8 @@ export default function Index() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Email</label>
-                                    <input 
-                                        type="email" 
+                                    <input
+                                        type="email"
                                         value={data.email}
                                         onChange={e => setData('email', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -115,7 +115,7 @@ export default function Index() {
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Dirección</label>
-                                    <textarea 
+                                    <textarea
                                         value={data.direccion}
                                         onChange={e => setData('direccion', e.target.value)}
                                         rows="2"
@@ -136,8 +136,8 @@ export default function Index() {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Serie</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={data.factura_serie}
                                         onChange={e => setData('factura_serie', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -145,8 +145,8 @@ export default function Index() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Correlativo Inicial</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         value={data.factura_inicio}
                                         onChange={e => setData('factura_inicio', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -154,8 +154,8 @@ export default function Index() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">ITBMS (%)</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         step="0.01"
                                         value={data.itbms_porcentaje}
                                         onChange={e => setData('itbms_porcentaje', e.target.value)}
@@ -167,7 +167,7 @@ export default function Index() {
                     </div>
 
                     <div className="bg-slate-50 px-8 py-4 flex justify-end gap-4 border-t border-slate-200">
-                        <button 
+                        <button
                             type="submit"
                             disabled={processing}
                             className="px-8 py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition disabled:opacity-50 flex items-center gap-2"

@@ -28,7 +28,7 @@ class MobileSyncController extends Controller
         // 2. Inventario del Vehículo (si aplica)
         $inventario = [];
         if ($ruta && $ruta->vehiculo_id) {
-            $inventario = InventarioVehiculo::with('item:id,nombre,codigo,precio_venta,impuesto_id')
+            $inventario = InventarioVehiculo::with('item:id,nombre,codigo,precio_venta,tax_id')
                 ->where('vehiculo_id', $ruta->vehiculo_id)
                 ->get()
                 ->map(function($inv) {
@@ -38,7 +38,7 @@ class MobileSyncController extends Controller
                         'codigo' => $inv->item->codigo,
                         'cantidad' => $inv->cantidad,
                         'precio' => $inv->item->precio_venta,
-                        'tax_id' => $inv->item->impuesto_id
+                        'tax_id' => $inv->item->tax_id
                     ];
                 });
         }
@@ -46,7 +46,7 @@ class MobileSyncController extends Controller
         // 3. Catálogo Global (para Preventa)
         // Optimizacion: Solo traer campos necesarios
         $catalogo = Item::where('activo', true)
-            ->select('id', 'nombre', 'codigo', 'precio_venta', 'impuesto_id')
+            ->select('id', 'nombre', 'codigo', 'precio_venta', 'tax_id')
             ->get();
 
         return response()->json([
@@ -108,16 +108,21 @@ class MobileSyncController extends Controller
                         continue;
                     }
 
-                    // Crear Orden (Reutilizando lógica o modelo existente)
+                    // Crear Orden
                     $orden = OrdenVenta::create([
+                        'numero_orden' => 'OV-MOB-' . strtoupper(substr($ordenData['uuid'], 0, 8)),
                         'sucursal_id' => Auth::user()->sucursal_id ?? 1,
                         'contacto_id' => $ordenData['cliente_id'],
-                        'fecha_emision' => date('Y-m-d'),
-                        'fecha_entrega' => date('Y-m-d'), // O la programada
-                        'estado' => 'pendiente', // O 'facturado' si es autoventa
-                        'referencia_externa' => $ordenData['uuid'], // Clave para idempotencia
-                        'total' => $ordenData['total'],
+                        'vendedor_id' => Auth::id(), // El vendedor es el usuario autenticado
                         'user_id' => Auth::id(),
+                        'fecha_emision' => date('Y-m-d'),
+                        'fecha_entrega' => $ordenData['fecha_entrega'] ?? date('Y-m-d'),
+                        'estado' => $ordenData['tipo'] === 'autoventa' ? 'Confirmada' : 'Borrador',
+                        'referencia_externa' => $ordenData['uuid'],
+                        'subtotal' => $ordenData['subtotal'] ?? $ordenData['total'], // Asignar subtotal si viene
+                        'itbms_total' => $ordenData['tax_total'] ?? 0,
+                        'total' => $ordenData['total'],
+                        'observaciones' => $ordenData['notas'] ?? null,
                     ]);
 
                     foreach ($ordenData['items'] as $item) {
@@ -127,8 +132,8 @@ class MobileSyncController extends Controller
                             'cantidad' => $item['cantidad'],
                             'precio_unitario' => $item['precio'],
                             'subtotal' => $item['cantidad'] * $item['precio'],
-                            'impuesto_monto' => 0, // Calcular según lógica fiscal real
-                            'total_linea' => $item['cantidad'] * $item['precio']
+                            'porcentaje_itbms' => $item['tax_percent'] ?? 7,
+                            'total' => ($item['cantidad'] * $item['precio']) * (1 + (($item['tax_percent'] ?? 7) / 100))
                         ]);
 
                         // Si es Autoventa, descontar inventario vehículo

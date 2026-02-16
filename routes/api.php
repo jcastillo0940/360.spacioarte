@@ -18,6 +18,13 @@ Route::post('/ventas/enviar-chat', function (Request $request) {
         'token'   => 'required|string',
     ]);
 
+    // SEGURIDAD: Validar que el token pertenezca a una orden real antes de emitir eventos
+    $existe = \App\Models\OrdenVenta::where('tracking_token', $request->token)->exists();
+    
+    if (!$existe) {
+        return response()->json(['error' => 'Token inválido'], 403);
+    }
+
     // Disparamos el evento al canal de Pusher
     // Esto no toca tu base de datos MySQL, protegiendo el rendimiento
     broadcast(new ChatMessageEvent(
@@ -29,3 +36,10 @@ Route::post('/ventas/enviar-chat', function (Request $request) {
         'status' => 'Enviado a la nube (Pusher)'
     ]);
 });
+
+// Rutas de Diseño - Movidas a web.php para usar sesión web
+// Route::middleware('auth:sanctum')->group(function () {
+//     Route::get('/ventas/ordenes/{id}/historial', [App\Http\Controllers\Ventas\OrdenVentaController::class, 'getHistorial']);
+//     Route::get('/diseno/search', [App\Http\Controllers\Ventas\DesignController::class, 'search']);
+//     Route::post('/diseno/upload', [App\Http\Controllers\Ventas\DesignController::class, 'upload']);
+// });

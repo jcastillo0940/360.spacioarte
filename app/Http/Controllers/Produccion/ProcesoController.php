@@ -25,11 +25,18 @@ class ProcesoController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'nombre'                    => 'required|string|max:100',
-            'tipo_maquina'              => 'required|string|max:100', // Ej. Prensa, Láser, DTF
-            'costo_operativo_promedio'  => 'required|numeric|min:0',
-            'capacidad_diaria'          => 'required|integer|min:0',   // Base para el cálculo predictivo
-            'activo'                    => 'boolean'
+            'nombre' => 'required|string|max:100',
+            'tipo_maquina' => 'required|string|max:100',
+            'categoria_tecnologia' => 'required|string',
+            'ancho_maximo_cm' => 'nullable|numeric|min:0',
+            'largo_maximo_cm' => 'nullable|numeric|min:0',
+            'tiempo_setup_minutos' => 'nullable|integer|min:0',
+            'tiempo_estimado_por_unidad' => 'nullable|integer|min:0',
+            'permite_nesting' => 'boolean',
+            'margen_seguridad_cm' => 'nullable|numeric|min:0',
+            'costo_operativo_promedio' => 'required|numeric|min:0',
+            'capacidad_diaria' => 'required|integer|min:0',
+            'activo' => 'boolean'
         ]);
 
         Proceso::create($validated);
@@ -43,11 +50,18 @@ class ProcesoController extends Controller
     public function update(Request $request, Proceso $proceso)
     {
         $validated = $request->validate([
-            'nombre'                    => 'required|string|max:100',
-            'tipo_maquina'              => 'required|string|max:100',
-            'costo_operativo_promedio'  => 'required|numeric|min:0',
-            'capacidad_diaria'          => 'required|integer|min:0',
-            'activo'                    => 'boolean'
+            'nombre' => 'required|string|max:100',
+            'tipo_maquina' => 'required|string|max:100',
+            'categoria_tecnologia' => 'required|string',
+            'ancho_maximo_cm' => 'nullable|numeric|min:0',
+            'largo_maximo_cm' => 'nullable|numeric|min:0',
+            'tiempo_setup_minutos' => 'nullable|integer|min:0',
+            'tiempo_estimado_por_unidad' => 'nullable|integer|min:0',
+            'permite_nesting' => 'boolean',
+            'margen_seguridad_cm' => 'nullable|numeric|min:0',
+            'costo_operativo_promedio' => 'required|numeric|min:0',
+            'capacidad_diaria' => 'required|integer|min:0',
+            'activo' => 'boolean'
         ]);
 
         $proceso->update($validated);

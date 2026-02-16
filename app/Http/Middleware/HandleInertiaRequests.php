@@ -37,11 +37,16 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'app_name' => config('app.name'),
-            'ziggy' => [
-                'routes' => collect(Route::getRoutes())->mapWithKeys(function ($route) {
-                    return [$route->getName() => $route->uri()];
-                })->filter()->all(),
-            ],
+            'ziggy' => function() use ($request) {
+                try {
+                    return array_merge((new \Tighten\Ziggy\Ziggy)->toArray(), [
+                        'location' => $request->url(),
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::error('Ziggy sharing error: ' . $e->getMessage());
+                    return ['routes' => [], 'url' => config('app.url')];
+                }
+            },
         ]);
     }
 }

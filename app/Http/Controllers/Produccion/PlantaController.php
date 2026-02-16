@@ -25,7 +25,7 @@ class PlantaController extends Controller
         $proceso = Proceso::findOrFail($id);
         $trabajos = OrdenProduccion::with(['venta.cliente', 'materiaPrima'])
             ->where('proceso_id', $id)
-            ->whereIn('estado', ['Impreso', 'En Máquina'])
+            ->whereIn('estado', ['Pendiente', 'Impreso', 'En Máquina'])
             ->orderBy('fecha_entrega_proyectada', 'asc')
             ->get();
 
@@ -42,6 +42,11 @@ class PlantaController extends Controller
         DB::beginTransaction();
         try {
             $orden->update(['estado' => 'En Máquina']);
+            
+            // Sincronizar estado con la orden de venta principal
+            if ($orden->venta) {
+                $orden->venta->update(['estado' => 'En Producción']);
+            }
 
             ProduccionTiempo::create([
                 'orden_produccion_id' => $orden->id,
@@ -85,19 +90,32 @@ class PlantaController extends Controller
             }
 
             // 2. Descontar Inventario (Material usado + Merma)
-            // Si ordenamos 5 y hubo 1 merma, se gastaron 6 materiales físicos.
-            $cantidadConsumida = $orden->cantidad + $request->cantidad_merma;
+            $merma = $request->input('cantidad_merma', 0);
+            $cantidadConsumida = $orden->cantidad + $merma;
+            
             if ($orden->materiaPrima) {
                 $orden->materiaPrima->decrement('stock_actual', $cantidadConsumida);
             }
 
             // 3. Si hubo MERMA, generar ORDEN DE REIMPRESIÓN
-            if ($request->cantidad_merma > 0) {
-                $this->generarReproceso($orden, $request->cantidad_merma);
+            if ($merma > 0) {
+                $this->generarReproceso($orden, $merma);
             }
 
             // 4. Finalizar orden actual
             $orden->update(['estado' => 'Terminado']);
+
+            // 5. Verificar si todas las tareas de producción de esta venta están terminadas
+            $venta = $orden->venta;
+            if ($venta) {
+                $pendientes = OrdenProduccion::where('orden_venta_id', $venta->id)
+                    ->where('estado', '!=', 'Terminado')
+                    ->count();
+                
+                if ($pendientes === 0) {
+                    $venta->update(['estado' => 'En Espera de Entrega']);
+                }
+            }
 
             DB::commit();
             return back()->with('success', 'Trabajo finalizado. ' . ($request->cantidad_merma > 0 ? 'Se generó orden de reimpresión.' : ''));

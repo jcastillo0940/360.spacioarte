@@ -14,6 +14,8 @@ class Contacto extends Model
         'razon_social',
         'tipo_identificacion',
         'identificacion',
+        'digito_verificador',
+        'requiere_factura_electronica',
         'dv',
         'direccion',
         'telefono',
@@ -27,6 +29,7 @@ class Contacto extends Model
     protected $casts = [
         'es_cliente' => 'boolean',
         'es_proveedor' => 'boolean',
+        'requiere_factura_electronica' => 'boolean',
         'limite_credito' => 'decimal:2'
     ];
 

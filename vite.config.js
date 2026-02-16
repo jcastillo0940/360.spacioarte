@@ -1,15 +1,16 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
     plugins: [
+        tailwindcss(),
         laravel({
             input: 'resources/js/app.jsx',
             refresh: true,
-            // 1. Le decimos al plugin de Laravel dónde está la carpeta pública real
-            publicDirectory: 'public_html', 
+            publicDirectory: 'public_html',
         }),
         react(),
         VitePWA({
@@ -51,6 +52,6 @@ export default defineConfig({
     // 2. Configuramos la salida del Build para que caiga en public_html/build
     build: {
         outDir: 'public_html/build',
-        emptyOutDir: true, // Limpia la carpeta antes de compilar
+        emptyOutDir: true,
     }
 });

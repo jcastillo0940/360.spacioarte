@@ -19,8 +19,14 @@ class Vendedor extends Model
         'zona_venta',
         'porcentaje_comision',
         'meta_mensual',
-        'activo'
+        'activo',
+        'user_id'
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     /**
      * Scope para filtrar solo vendedores activos
