@@ -48,4 +48,9 @@ class OrdenProduccion extends Model
     {
         return $this->belongsToMany(PliegoImpresion::class, 'pliego_orden_produccion', 'orden_produccion_id', 'pliego_id');
     }
+
+    public function tiempos()
+    {
+        return $this->hasMany(ProduccionTiempo::class);
+    }
 }

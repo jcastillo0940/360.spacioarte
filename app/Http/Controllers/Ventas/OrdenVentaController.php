@@ -13,8 +13,18 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use App\Services\Production\OrderService;
+use App\Enums\OrdenEstado;
+
 class OrdenVentaController extends Controller
 {
+    protected OrderService $orderService;
+
+    public function __construct(OrderService $orderService)
+    {
+        $this->orderService = $orderService;
+    }
+
     public function index()
     {
         if (request()->is('api/*')) {
@@ -28,6 +38,15 @@ class OrdenVentaController extends Controller
         return inertia('Ventas/Ordenes/Index');
     }
 
+    // ... (index, getDatos, store, show remain mostly same but keep an eye on hardcoded strings if any)
+    // store uses 'estado' => 'Borrador'. Update to OrdenEstado::BORRADOR->value if possible, 
+    // but the store method code wasn't requested to change deeply. 
+    // However, for consistency, I should update store too if I can.
+    // Let's focus on update and reimprimir derived from the prompt on previous Code Interaction.
+
+    // ... methods below ...
+
+    // ... methods below ...
     public function getDatos()
     {
         try {
@@ -97,6 +116,10 @@ class OrdenVentaController extends Controller
             'vendedor_id' => 'nullable|exists:vendedores,id',
             'fecha_emision' => 'required|date',
             'fecha_entrega' => 'required|date|after_or_equal:fecha_emision',
+            'cliente_envia_muestra' => 'nullable|boolean',
+            'cliente_envia_archivo' => 'nullable|boolean',
+            'detalle_diseno' => 'nullable|string',
+            'metodo_pago_referencia' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.item_id' => 'required|exists:items,id',
             'items.*.cantidad' => 'required|numeric|min:0.01',
@@ -108,6 +131,15 @@ class OrdenVentaController extends Controller
             'items.*.capacidad_por_pliego' => 'nullable|integer',
             'items.*.total_piezas_calculadas' => 'nullable|integer',
         ]);
+
+        // Validación adicional: ID de transacción obligatorio si no es efectivo
+        if ($request->metodo_pago_inicial && $request->metodo_pago_inicial !== 'Efectivo') {
+            if (empty($request->metodo_pago_referencia)) {
+                return response()->json([
+                    'error' => 'El número de comprobante/transacción es obligatorio para pagos con ' . $request->metodo_pago_inicial
+                ], 422);
+            }
+        }
 
         DB::beginTransaction();
         try {
@@ -130,11 +162,19 @@ class OrdenVentaController extends Controller
                 $pathReferencia = $request->file('imagen_referencia')->store('referencias', 'public');
             }
 
+            // Lógica de vendedor automático
+            $vendedorId = $validated['vendedor_id'];
+            if (!$vendedorId) {
+                $vendedorAsignado = Vendedor::where('user_id', auth()->id())->first();
+                $vendedorId = $vendedorAsignado ? $vendedorAsignado->id : null;
+            }
+
             $orden = OrdenVenta::create([
                 'numero_orden' => $numeroOrden,
                 'contacto_id' => $validated['contacto_id'],
                 'sucursal_id' => $validated['sucursal_id'],
-                'vendedor_id' => $validated['vendedor_id'],
+                'vendedor_id' => $vendedorId,
+                'user_id' => auth()->id(),
                 'fecha_emision' => $validated['fecha_emision'],
                 'fecha_entrega' => $validated['fecha_entrega'],
                 'subtotal' => $subtotal,
@@ -142,6 +182,10 @@ class OrdenVentaController extends Controller
                 'total' => $total,
                 'monto_abonado' => $request->input('monto_abonado', 0),
                 'metodo_pago_inicial' => $request->input('metodo_pago_inicial'),
+                'metodo_pago_referencia' => $request->input('metodo_pago_referencia'),
+                'cliente_envia_muestra' => $request->boolean('cliente_envia_muestra'),
+                'cliente_envia_archivo' => $request->boolean('cliente_envia_archivo'),
+                'detalle_diseno' => $request->input('detalle_diseno'),
                 'estado' => 'Borrador',
                 'imagen_referencia' => $pathReferencia
             ]);
@@ -161,7 +205,8 @@ class OrdenVentaController extends Controller
                 'itbms_total' => $orden->itbms_total,
                 'total' => $orden->total,
                 'saldo_pendiente' => $orden->total - $orden->monto_abonado,
-                'estado' => $orden->monto_abonado >= $orden->total ? 'Pagada' : 'Pendiente'
+                'payment_term_id' => $orden->cliente->payment_term_id ?? 1, // Default to first if none
+                'estado' => $orden->monto_abonado >= $orden->total ? 'Pagada' : 'Abierta'
             ]);
 
             foreach ($validated['items'] as $item) {
@@ -203,7 +248,7 @@ class OrdenVentaController extends Controller
 
     public function update(Request $request, OrdenVenta $orden)
     {
-        if (!in_array($orden->estado, ['Borrador', 'Confirmada'])) {
+        if (!in_array($orden->estado, [OrdenEstado::BORRADOR->value, OrdenEstado::CONFIRMADA->value])) {
             return redirect()->back()->with('error', 'No se puede editar esta orden.');
         }
 
@@ -213,7 +258,7 @@ class OrdenVentaController extends Controller
             'vendedor_id' => 'nullable|exists:vendedores,id',
             'fecha_emision' => 'required|date',
             'fecha_entrega' => 'nullable|date|after_or_equal:fecha_emision',
-            'estado' => 'required|in:Borrador,Confirmada,Facturada,Cancelada',
+            'estado' => 'required|in:' . implode(',', [OrdenEstado::BORRADOR->value, OrdenEstado::CONFIRMADA->value, OrdenEstado::FACTURADA->value, OrdenEstado::CANCELADO->value]),
             'items' => 'required|array|min:1',
             'items.*.item_id' => 'required|exists:items,id',
             'items.*.cantidad' => 'required|numeric|min:0.01',
@@ -298,25 +343,28 @@ class OrdenVentaController extends Controller
     {
         DB::beginTransaction();
         try {
-            // Regresar estado
-            $orden->update(['estado' => 'En Impresión']);
+            // Regresar estado a Producción usando Service (sin consumo stock)
+            $this->orderService->cambiarEstado($orden, OrdenEstado::PRODUCCION->value, false);
 
             // Eliminar órdenes de producción previas que no estén terminadas 
             // O simplemente crear nuevas. El usuario usualmente quiere nuevas tareas.
             foreach ($orden->detalles as $detalle) {
                 if ($detalle->item->requires_recipe) {
-                    OrdenProduccion::create([
-                        'orden_venta_id' => $orden->id,
-                        'proceso_id'     => $detalle->proceso_id,
-                        'item_id'        => $detalle->material_id ?? $detalle->item_id,
-                        'materia_prima_id' => $detalle->material_id,
-                        'cantidad'       => $detalle->cantidad,
-                        'pliegos'        => $detalle->pliegos_necesarios,
-                        'capacidad_nesting' => $detalle->capacidad_por_pliego,
-                        'estado'         => 'Pendiente',
-                        'fecha_entrega_proyectada' => $orden->fecha_entrega,
-                        'notas_operario' => 'RE-IMPRESIÓN solicitada desde ventas.'
-                    ]);
+                    // Check if proccess_id is set
+                    if ($detalle->proceso_id) {
+                        OrdenProduccion::create([
+                            'orden_venta_id' => $orden->id,
+                            'proceso_id'     => $detalle->proceso_id,
+                            'item_id'        => $detalle->material_id ?? $detalle->item_id,
+                            'materia_prima_id' => $detalle->material_id,
+                            'cantidad'       => $detalle->cantidad,
+                            'pliegos'        => $detalle->pliegos_necesarios,
+                            'capacidad_nesting' => $detalle->capacidad_por_pliego,
+                            'estado'         => OrdenEstado::PENDIENTE->value,
+                            'fecha_entrega_proyectada' => $orden->fecha_entrega,
+                            'notas_operario' => 'RE-IMPRESIÓN solicitada desde ventas.'
+                        ]);
+                    }
                 }
             }
 
@@ -330,34 +378,39 @@ class OrdenVentaController extends Controller
 
     public function updateEstado(Request $request, OrdenVenta $orden)
     {
-        $validated = $request->validate(['estado' => 'required|in:Borrador,Confirmada,Facturada,Cancelada']);
+        $allStates = array_column(OrdenEstado::cases(), 'value');
+        $validated = $request->validate(['estado' => 'required|in:' . implode(',', $allStates)]);
         
-        $oldEstado = $orden->estado;
-        $orden->update(['estado' => $validated['estado']]);
+        try {
+            // Usar el servicio para aplicar lógica de negocio (inventario, eventos, etc)
+            $this->orderService->cambiarEstado($orden, $validated['estado']);
 
-        // Si cambia a Confirmada, generar órdenes de producción
-        if ($validated['estado'] === 'Confirmada' && $oldEstado !== 'Confirmada') {
-            // Verificar si ya existen para no duplicar
-            if ($orden->ordenesProduccion()->count() === 0) {
-                foreach ($orden->detalles as $detalle) {
-                    if ($detalle->item->requires_recipe) {
-                        OrdenProduccion::create([
-                            'orden_venta_id' => $orden->id,
-                            'proceso_id'     => $detalle->proceso_id,
-                            'item_id'        => $detalle->material_id ?? $detalle->item_id,
-                            'materia_prima_id' => $detalle->material_id,
-                            'cantidad'       => $detalle->cantidad,
-                            'pliegos'        => $detalle->pliegos_necesarios,
-                            'capacidad_nesting' => $detalle->capacidad_por_pliego,
-                            'estado'         => 'Pendiente',
-                            'fecha_entrega_proyectada' => $orden->fecha_entrega
-                        ]);
+            // Si cambia a Confirmada, generar órdenes de producción (Mantener compatibilidad)
+            if ($validated['estado'] === OrdenEstado::CONFIRMADA->value) {
+                if ($orden->ordenesProduccion()->count() === 0) {
+                    foreach ($orden->detalles as $detalle) {
+                        // Verificamos si requiere producción según el tipo de item o proceso
+                        if ($detalle->item->requires_recipe || $detalle->proceso_id) {
+                            OrdenProduccion::create([
+                                'orden_venta_id' => $orden->id,
+                                'proceso_id'     => $detalle->proceso_id,
+                                'item_id'        => $detalle->material_id ?? $detalle->item_id,
+                                'materia_prima_id' => $detalle->material_id,
+                                'cantidad'       => $detalle->cantidad,
+                                'pliegos'        => $detalle->pliegos_necesarios,
+                                'capacidad_nesting' => $detalle->capacidad_por_pliego,
+                                'estado'         => OrdenEstado::PENDIENTE->value,
+                                'fecha_entrega_proyectada' => $orden->fecha_entrega
+                            ]);
+                        }
                     }
                 }
             }
-        }
 
-        return redirect()->back()->with('success', 'Estado actualizado');
+            return redirect()->route('ordenes.show', $orden->id)->with('success', 'Estado de la orden actualizado correctamente.');
+        } catch (\Exception $e) {
+            return redirect()->route('ordenes.show', $orden->id)->with('error', 'Error al actualizar proceso: ' . $e->getMessage());
+        }
     }
 
     public function getHistorial($id)

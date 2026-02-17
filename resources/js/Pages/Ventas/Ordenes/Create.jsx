@@ -25,7 +25,11 @@ export default function Create() {
         items: [],
         imagen_referencia: null,
         monto_abonado: 0,
-        metodo_pago_inicial: 'Transferencia'
+        metodo_pago_inicial: 'Transferencia',
+        metodo_pago_referencia: '',
+        cliente_envia_muestra: false,
+        cliente_envia_archivo: false,
+        detalle_diseno: ''
     });
 
     const [subtotal, setSubtotal] = useState(0);
@@ -344,6 +348,48 @@ export default function Create() {
                                     accept="image/*"
                                 />
                             </div>
+
+                            <div className="lg:col-span-2 bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4">
+                                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                    </svg>
+                                    Opciones de Seguimiento y Diseño
+                                </h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 transition group">
+                                        <input
+                                            type="checkbox"
+                                            checked={data.cliente_envia_muestra}
+                                            onChange={e => setData('cliente_envia_muestra', e.target.checked)}
+                                            className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700 group-hover:text-blue-600 transition">El cliente enviará muestra física</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 transition group">
+                                        <input
+                                            type="checkbox"
+                                            checked={data.cliente_envia_archivo}
+                                            onChange={e => setData('cliente_envia_archivo', e.target.checked)}
+                                            className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700 group-hover:text-blue-600 transition">El cliente enviará imagen/archivo</span>
+                                    </label>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-black uppercase text-slate-500">Detalles para Diseño / Brief del Cliente</label>
+                                    <textarea
+                                        rows="3"
+                                        value={data.detalle_diseno}
+                                        onChange={e => setData('detalle_diseno', e.target.value)}
+                                        placeholder="Instrucciones específicas, textos, correos o especificaciones que el diseñador deba saber..."
+                                        className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition text-sm font-medium"
+                                    ></textarea>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -574,6 +620,21 @@ export default function Create() {
                                         </select>
                                     </div>
 
+                                    {data.metodo_pago_inicial !== 'Efectivo' && (
+                                        <div className="animate-fade-in">
+                                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">ID Transacción / Ref. de Pago *</label>
+                                            <input
+                                                type="text"
+                                                value={data.metodo_pago_referencia}
+                                                onChange={e => setData('metodo_pago_referencia', e.target.value)}
+                                                placeholder="Ej: 154826, #Ref, etc."
+                                                className="w-full bg-slate-800 border-slate-700 rounded-lg px-4 py-2 text-white text-sm font-bold focus:ring-blue-500 focus:border-blue-500 placeholder:opacity-30"
+                                                required={data.metodo_pago_inicial !== 'Efectivo'}
+                                            />
+                                            {errors.metodo_pago_referencia && <span className="text-red-400 text-[10px]">{errors.metodo_pago_referencia}</span>}
+                                        </div>
+                                    )}
+
                                     <div className="bg-blue-900/30 p-3 rounded-lg border border-blue-500/30">
                                         <div className="flex justify-between text-xs mb-1">
                                             <span className="text-blue-300 font-bold uppercase">Saldo Pendiente:</span>
@@ -653,8 +714,13 @@ function ClienteForm({ onSuccess, paymentTerms }) {
                 onSuccess(res.data);
             })
             .catch(err => {
-                console.error(err);
-                alert('Error al crear cliente. Verifique los datos.');
+                console.error('Error al crear cliente:', err);
+                if (err.response?.data?.errors) {
+                    const messages = Object.values(err.response.data.errors).flat().join('\n');
+                    alert(`Errores de validación:\n${messages}`);
+                } else {
+                    alert('No se pudo registrar el cliente. Verifique su conexión o si el documento ya existe.');
+                }
             });
     };
 

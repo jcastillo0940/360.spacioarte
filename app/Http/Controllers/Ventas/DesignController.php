@@ -261,7 +261,10 @@ class DesignController extends Controller
             'numero_orden' => $orden->numero_orden,
             'cliente' => $orden->cliente->razon_social,
             'estado_diseno' => $orden->estado_diseno,
-            'intentos' => $orden->diseno_intentos
+            'intentos' => $orden->diseno_intentos,
+            'detalle_diseno' => $orden->detalle_diseno,
+            'brief_cliente' => $orden->brief_cliente,
+            'archivo_brief_path' => $orden->archivo_brief_path ? \Illuminate\Support\Facades\Storage::url($orden->archivo_brief_path) : null
         ]);
     }
 }

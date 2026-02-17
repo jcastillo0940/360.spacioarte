@@ -11,7 +11,7 @@ class FacturaVenta extends Model
     protected $table = 'facturas_venta';
 
     protected $fillable = [
-        'numero_factura', 'contacto_id', 'vendedor_id', 'orden_venta_id',
+        'numero_factura', 'contacto_id', 'vendedor_id', 'orden_venta_id', 'pos_sesion_id',
         'fecha_emision', 'fecha_vencimiento', 'payment_term_id',
         'subtotal', 'itbms_total', 'total', 'saldo_pendiente', 'estado'
     ];

@@ -28,11 +28,8 @@ export default function Show({ ordenId }) {
     const [errorMsg, setErrorMsg] = useState(null);
     const [mensajes, setMensajes] = useState([]);
     const [historial, setHistorial] = useState([]);
-    const [runningTimer, setRunningTimer] = useState(null);
-    const [elapsedTime, setElapsedTime] = useState(0);
     const [uploading, setUploading] = useState(false);
     const scrollRef = useRef(null);
-    const timerRef = useRef(null);
 
     const { data: uploadData, setData: setUploadData, post, processing: uploadProcessing, reset: resetUpload } = useForm({
         imagen: null,
@@ -63,17 +60,6 @@ export default function Show({ ordenId }) {
                     axios.get(`/api/ventas/ordenes/${ordenId}/historial`)
                         .then(h => setHistorial(h.data))
                         .catch(err => console.error("Error al cargar historial:", err));
-
-                    // Verificar si hay un timer activo
-                    const active = res.data.tiempos?.find(t => t.hora_fin === null);
-                    if (active) {
-                        setRunningTimer(active);
-                        const start = new Date(active.hora_inicio).getTime();
-                        setElapsedTime(Math.floor((Date.now() - start) / 1000));
-                    } else {
-                        setRunningTimer(null);
-                        setElapsedTime(0);
-                    }
                 }
                 setLoading(false);
             })
@@ -87,18 +73,6 @@ export default function Show({ ordenId }) {
     useEffect(() => {
         refreshData();
     }, [ordenId]);
-
-    // Timer effect
-    useEffect(() => {
-        if (runningTimer) {
-            timerRef.current = setInterval(() => {
-                setElapsedTime(prev => prev + 1);
-            }, 1000);
-        } else {
-            clearInterval(timerRef.current);
-        }
-        return () => clearInterval(timerRef.current);
-    }, [runningTimer]);
 
     useEffect(() => {
         if (!orden?.tracking_token) return;
@@ -129,19 +103,15 @@ export default function Show({ ordenId }) {
         };
     }, [orden?.tracking_token]);
 
-    const handleAction = async (action, fase) => {
-        try {
-            if (action === 'start') {
-                await axios.post('/api/diseno/timer/start', { orden_id: ordenId, fase });
-            } else if (action === 'stop') {
-                await axios.post('/api/diseno/timer/stop', { orden_id: ordenId, fase });
-            } else if (action === 'update_status') {
-                await axios.put(`/ventas/ordenes/${ordenId}/estado`, { estado: fase });
-            }
-            refreshData();
-        } catch (error) {
-            alert("Error al gestionar el proceso: " + (error.response?.data?.message || error.message));
-        }
+    const handleAction = async (nuevoEstado) => {
+        if (!confirm(`¿Cambiar estado a ${nuevoEstado}?`)) return;
+
+        router.put(`/ventas/ordenes/${ordenId}/estado`, {
+            estado: nuevoEstado
+        }, {
+            preserveScroll: true,
+            onSuccess: () => refreshData()
+        });
     };
 
     const handleReprint = async () => {
@@ -235,15 +205,14 @@ export default function Show({ ordenId }) {
     const getStatusStyles = (status) => {
         switch (status) {
             case 'Borrador': return 'bg-slate-100 text-slate-600 border-slate-200';
-            case 'En Proceso de Diseño': return 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse';
-            case 'Enviado para Aprobación': return 'bg-purple-100 text-purple-700 border-purple-200';
-            case 'Diseño Rechazado': return 'bg-red-100 text-red-700 border-red-200';
-            case 'Rediseñando': return 'bg-orange-100 text-orange-700 border-orange-200 animate-pulse';
-            case 'Diseño Aprobado': return 'bg-green-100 text-green-700 border-green-200';
-            case 'En Impresión': return 'bg-cyan-100 text-cyan-700 border-cyan-200';
-            case 'En Producción': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-            case 'En Espera de Entrega': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-            case 'Entregado': return 'bg-emerald-600 text-white border-emerald-700';
+            case 'Confirmada': return 'bg-blue-100 text-blue-700 border-blue-200';
+            case 'Diseño': return 'bg-purple-100 text-purple-700 border-purple-200';
+            case 'Pre-Prensa': return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+            case 'Producción': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+            case 'Terminado': return 'bg-green-100 text-green-700 border-green-200';
+            case 'Entregado': return 'bg-emerald-600 text-white border-emerald-700 shadow-lg shadow-emerald-100';
+            case 'Facturada': return 'bg-slate-900 text-white border-slate-800';
+            case 'Cancelada': return 'bg-red-100 text-red-700 border-red-200';
             default: return 'bg-slate-100 text-slate-600 border-slate-200';
         }
     };
@@ -306,20 +275,21 @@ export default function Show({ ordenId }) {
                                 <FileText size={18} /> GENERAR FACTURA
                             </button>
                         )}
-                        <div className="flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-2xl shadow-xl">
-                            <Activity size={18} className="text-blue-400" />
-                            <span className="text-[10px] font-black uppercase tracking-widest">
-                                Diseño: {orden.estado_diseno}
-                            </span>
-                        </div>
-                        {orden.diseno_cobro_aprobado && (
-                            <div className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-2xl shadow-xl animate-pulse">
-                                <DollarSign size={18} />
-                                <span className="text-[10px] font-black uppercase tracking-widest">
-                                    Cobro Activo: {Math.floor(orden.diseno_minutos_acumulados / 60)}h {orden.diseno_minutos_acumulados % 60}m • {formatCurrency(orden.diseno_monto_calculado)}
-                                </span>
-                            </div>
-                        )}
+                        <select
+                            value={orden.estado}
+                            onChange={(e) => handleAction(e.target.value)}
+                            className="px-6 py-3 bg-slate-900 text-white rounded-2xl shadow-xl border-0 font-black text-[10px] uppercase tracking-widest cursor-pointer hover:bg-black transition-colors"
+                        >
+                            <option value="Borrador">Borrador</option>
+                            <option value="Confirmada">Confirmada</option>
+                            <option value="Diseño">Fase 1: Diseño</option>
+                            <option value="Pre-Prensa">Fase 2: Impresión</option>
+                            <option value="Producción">Fase 3: Máquinas</option>
+                            <option value="Terminado">Fase 4: Bodega</option>
+                            <option value="Entregado">Fase 5: Entregado</option>
+                            <option value="Facturada">Facturada</option>
+                            <option value="Cancelada">Cancelada</option>
+                        </select>
                     </div>
                 </div>
 
@@ -328,89 +298,62 @@ export default function Show({ ordenId }) {
                     {/* COLUMNA IZQUIERDA: DETALLES Y GESTIÓN */}
                     <div className="lg:col-span-8 space-y-8">
 
-                        {/* TARJETA DE GESTIÓN DE TIEMPOS Y DISEÑO (KDS) */}
+                        {/* TARJETA DE GESTIÓN DE FLUJO (MANUAL) */}
                         <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
 
                             <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-                                <div className="space-y-4 flex-1 w-full">
+                                <div className="space-y-6 flex-1 w-full">
                                     <h3 className="text-blue-400 font-black uppercase tracking-[0.2em] text-xs flex items-center gap-2">
-                                        <Timer size={16} /> Gestión de Procesos y Diseño
+                                        <Activity size={16} /> Flujo de Trabajo Producción
                                     </h3>
 
-                                    <div className="flex flex-wrap gap-4">
-                                        {!runningTimer ? (
-                                            <>
-                                                {/* Botón Diseño */}
-                                                <button
-                                                    onClick={() => handleAction('start', 'Diseño')}
-                                                    disabled={['Diseño Aprobado', 'En Impresión', 'En Producción', 'Entregado'].includes(orden.estado)}
-                                                    className={`flex-1 min-w-[180px] h-20 rounded-3xl flex items-center justify-center gap-4 transition-all active:scale-95 shadow-lg group ${['Diseño Aprobado', 'En Impresión', 'En Producción', 'Entregado'].includes(orden.estado) ? 'bg-slate-800 opacity-50' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40'}`}
-                                                >
-                                                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                        <Cpu size={20} />
-                                                    </div>
-                                                    <div className="text-left">
-                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60">Fase 1</div>
-                                                        <div className="font-black text-sm">ENVIAR A DISEÑO</div>
-                                                    </div>
-                                                </button>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <button
+                                            onClick={() => handleAction('Diseño')}
+                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${orden.estado === 'Diseño' ? 'bg-blue-600 border-blue-400 shadow-lg shadow-blue-900/40 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                                        >
+                                            <Cpu size={24} />
+                                            <div className="text-[10px] font-black uppercase tracking-widest">DISEÑO</div>
+                                        </button>
+                                        <button
+                                            onClick={() => handleAction('Pre-Prensa')}
+                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${orden.estado === 'Pre-Prensa' ? 'bg-cyan-600 border-cyan-400 shadow-lg shadow-cyan-900/40 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                                        >
+                                            <Upload size={24} />
+                                            <div className="text-[10px] font-black uppercase tracking-widest">IMPRESIÓN</div>
+                                        </button>
+                                        <button
+                                            onClick={() => handleAction('Producción')}
+                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${orden.estado === 'Producción' ? 'bg-indigo-600 border-indigo-400 shadow-lg shadow-indigo-900/40 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                                        >
+                                            <Cpu size={24} />
+                                            <div className="text-[10px] font-black uppercase tracking-widest">MÁQUINAS</div>
+                                        </button>
+                                        <button
+                                            onClick={() => handleAction('Terminado')}
+                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${orden.estado === 'Terminado' ? 'bg-green-600 border-green-400 shadow-lg shadow-green-900/40 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                                        >
+                                            <CheckCircle size={24} />
+                                            <div className="text-[10px] font-black uppercase tracking-widest">BODEGA</div>
+                                        </button>
+                                    </div>
 
-                                                {/* Botón Impresión */}
-                                                <button
-                                                    onClick={() => handleAction('start', 'Impresión')}
-                                                    disabled={['En Impresión', 'En Producción', 'Entregado'].includes(orden.estado)}
-                                                    className={`flex-1 min-w-[180px] h-20 rounded-3xl flex items-center justify-center gap-4 transition-all active:scale-95 border group ${['En Impresión', 'En Producción', 'Entregado'].includes(orden.estado) ? 'bg-slate-800 border-slate-700 opacity-50' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 shadow-lg'}`}
-                                                >
-                                                    <Play fill="currentColor" size={20} className="text-slate-400" />
-                                                    <div className="text-left">
-                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60">Fase 2</div>
-                                                        <div className="font-black text-sm">ENVIAR A IMPRESIÓN</div>
-                                                    </div>
-                                                </button>
+                                    <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+                                        <button
+                                            onClick={handleReprint}
+                                            className="px-6 py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-900/20 rounded-xl text-red-500 text-[10px] font-black uppercase flex items-center gap-2 transition-all"
+                                        >
+                                            <History size={14} /> Solicitar Reproceso
+                                        </button>
 
-                                                {/* Botón Maquinado / Prensa */}
-                                                <button
-                                                    onClick={() => handleAction('start', 'Producción')}
-                                                    disabled={['En Producción', 'Entregado'].includes(orden.estado)}
-                                                    className={`flex-1 min-w-[180px] h-20 rounded-3xl flex items-center justify-center gap-4 transition-all active:scale-95 border group ${['En Producción', 'Entregado'].includes(orden.estado) ? 'bg-slate-800 border-slate-700 opacity-50' : 'bg-indigo-900 hover:bg-indigo-800 border-indigo-700 shadow-lg'}`}
-                                                >
-                                                    <Activity size={20} className="text-indigo-400" />
-                                                    <div className="text-left">
-                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60">Fase 3</div>
-                                                        <div className="font-black text-sm">ENVIAR A MÁQUINA</div>
-                                                    </div>
-                                                </button>
-
-                                                {/* Botón Reimpresión */}
-                                                <button
-                                                    onClick={handleReprint}
-                                                    className="flex-none w-20 h-20 bg-red-900/30 hover:bg-red-900/50 border border-red-900/50 rounded-3xl flex items-center justify-center transition-all active:scale-95 group shadow-xl"
-                                                    title="Reimprimir / Reproceso"
-                                                >
-                                                    <History size={24} className="text-red-500 group-hover:rotate-180 transition-transform duration-500" />
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <div className="w-full h-32 bg-blue-600 rounded-[2rem] flex items-center justify-between px-10 shadow-inner relative overflow-hidden">
-                                                <div className="flex items-center gap-6 z-10">
-                                                    <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center animate-spin-slow">
-                                                        <Clock size={32} />
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80">PROCESANDO: {runningTimer.fase}</div>
-                                                        <div className="text-4xl font-mono font-black tabular-nums">{formatTime(elapsedTime)}</div>
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleAction('stop', runningTimer.fase)}
-                                                    className="w-16 h-16 bg-white text-blue-600 rounded-full flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all active:scale-90 z-10 shadow-2xl"
-                                                >
-                                                    <Square fill="currentColor" size={24} />
-                                                </button>
-                                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
-                                            </div>
-                                        )}
+                                        <button
+                                            onClick={() => handleAction('Entregado')}
+                                            disabled={orden.estado === 'Entregado'}
+                                            className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-900 transition-all disabled:opacity-20"
+                                        >
+                                            MARCAR COMO ENTREGADO
+                                        </button>
                                     </div>
                                 </div>
 
@@ -449,6 +392,79 @@ export default function Show({ ordenId }) {
                                 )}
                             </div>
                         </div>
+
+                        {/* SECCIÓN DE INSTRUCCIONES Y BRIEF */}
+                        {(orden.detalle_diseno || orden.brief_cliente) && (
+                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden animate-fade-in-up">
+                                <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-indigo-50/30">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-indigo-500 flex items-center gap-3">
+                                        <AlertCircle size={18} className="text-indigo-500" /> Instrucciones del Proyecto
+                                    </h3>
+                                </div>
+                                <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {orden.detalle_diseno && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Indicaciones de Ventas</p>
+                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-sm font-bold text-slate-700 leading-relaxed">
+                                                {orden.detalle_diseno}
+                                            </div>
+                                            {orden.imagen_referencia && (
+                                                <div className="mt-4">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">Adjunto de Ventas</p>
+                                                    <img
+                                                        src={`/storage/${orden.imagen_referencia}`}
+                                                        className="h-32 w-full object-cover rounded-2xl border border-slate-200 shadow-sm cursor-zoom-in hover:scale-[1.02] transition-transform"
+                                                        onClick={() => window.open(`/storage/${orden.imagen_referencia}`, '_blank')}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {orden.brief_cliente && (
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Brief del Cliente</p>
+                                                <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 text-sm font-bold text-indigo-900 leading-relaxed shadow-inner">
+                                                    {orden.brief_cliente}
+                                                </div>
+                                            </div>
+                                            {orden.archivo_brief_path && (
+                                                <div className="pt-2">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 italic">Materiales de Referencia</p>
+                                                    <div className="flex items-center gap-4">
+                                                        <a
+                                                            href={`/storage/${orden.archivo_brief_path}`}
+                                                            target="_blank"
+                                                            className="flex items-center gap-3 p-4 bg-white border-2 border-slate-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group shadow-sm"
+                                                        >
+                                                            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                                                <FileText size={20} />
+                                                            </div>
+                                                            <div className="text-left">
+                                                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Descargar</div>
+                                                                <div className="text-[11px] font-black text-slate-800 italic">VER ARCHIVO</div>
+                                                            </div>
+                                                        </a>
+                                                        {['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => orden.archivo_brief_path?.toLowerCase().endsWith(ext)) && (
+                                                            <div className="relative group/img">
+                                                                <img
+                                                                    src={`/storage/${orden.archivo_brief_path}`}
+                                                                    className="h-20 w-20 object-cover rounded-2xl border border-slate-200 shadow-sm cursor-zoom-in group-hover/img:scale-105 transition-transform"
+                                                                    onClick={() => window.open(`/storage/${orden.archivo_brief_path}`, '_blank')}
+                                                                />
+                                                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 rounded-2xl pointer-events-none transition-opacity flex items-center justify-center">
+                                                                    <ExternalLink size={16} className="text-white" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* PRODUCTOS */}
                         <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">

@@ -23,6 +23,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
         // Esto soluciona de raíz el error 419 (Page Expired)
         $middleware->validateCsrfTokens(except: [
             'api/ventas/enviar-chat',
+            'api/inventario/contactos',
         ]);
 
         $middleware->alias([

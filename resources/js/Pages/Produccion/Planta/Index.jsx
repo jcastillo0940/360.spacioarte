@@ -23,6 +23,17 @@ export default function Index({ procesos }) {
             });
     };
 
+    useEffect(() => {
+        if (!maquinaSeleccionada) return;
+
+        const channel = window.Echo.channel('orders');
+        channel.listen('OrderStateChanged', (e) => {
+            fetchCola(maquinaSeleccionada.id);
+        });
+
+        return () => channel.stopListening('OrderStateChanged');
+    }, [maquinaSeleccionada?.id]);
+
     // Iniciar trabajo (Captura timestamp de inicio)
     const handleIniciar = (id) => {
         router.post(route('produccion.iniciar', id), {}, {
@@ -126,108 +137,112 @@ export default function Index({ procesos }) {
                         ) : (
                             /* Listado de Tarjetas de Trabajo */
                             <div className="grid grid-cols-1 gap-6">
-                                {cola.map(trabajo => (
-                                    <div key={trabajo.id} className="bg-white border-2 border-slate-100 rounded-[2.5rem] overflow-hidden shadow-xl flex flex-col lg:flex-row transition-all hover:border-blue-200">
+                                {cola.map(trabajo => {
+                                    const isRunning = trabajo.tiempos && trabajo.tiempos.length > 0;
 
-                                        {/* Información del Trabajo */}
-                                        <div className="p-8 flex-1">
-                                            <div className="flex flex-wrap items-center gap-3 mb-4">
-                                                <span className="bg-slate-900 text-white px-4 py-1.5 rounded-xl font-black text-sm uppercase">
-                                                    #{trabajo.venta?.numero_orden}
-                                                </span>
-                                                <span className={`px-4 py-1.5 rounded-xl font-black text-sm uppercase ${trabajo.estado === 'En Máquina' ? 'bg-blue-600 text-white animate-pulse' :
-                                                    trabajo.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-700' :
-                                                        'bg-green-100 text-green-700'
-                                                    }`}>
-                                                    {trabajo.estado}
-                                                </span>
-                                                {trabajo.notas_operario?.includes('REPROCESO') && (
-                                                    <span className="bg-red-100 text-red-700 px-4 py-1.5 rounded-xl font-black text-sm uppercase flex items-center gap-1">
-                                                        <AlertTriangle size={14} /> Reproceso
+                                    return (
+                                        <div key={trabajo.id} className="bg-white border-2 border-slate-100 rounded-[2.5rem] overflow-hidden shadow-xl flex flex-col lg:flex-row transition-all hover:border-blue-200">
+
+                                            {/* Información del Trabajo */}
+                                            <div className="p-8 flex-1">
+                                                <div className="flex flex-wrap items-center gap-3 mb-4">
+                                                    <span className="bg-slate-900 text-white px-4 py-1.5 rounded-xl font-black text-sm uppercase">
+                                                        #{trabajo.venta?.numero_orden}
                                                     </span>
-                                                )}
-                                            </div>
-
-                                            <h4 className="text-3xl font-black text-slate-900 mb-2 uppercase leading-tight">
-                                                {trabajo.materia_prima?.nombre}
-                                            </h4>
-
-                                            <div className="flex items-center gap-2 text-slate-500 font-bold text-lg mb-6">
-                                                <User size={20} className="text-blue-500" />
-                                                {trabajo.venta?.cliente?.razon_social}
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Cantidad a Producir</p>
-                                                    <div className="flex items-center gap-2 text-2xl font-black text-slate-800">
-                                                        <Package size={24} className="text-slate-400" />
-                                                        {trabajo.cantidad} <span className="text-sm font-bold text-slate-400 lowercase">uds</span>
-                                                    </div>
+                                                    <span className={`px-4 py-1.5 rounded-xl font-black text-sm uppercase ${isRunning ? 'bg-blue-600 text-white animate-pulse' :
+                                                        trabajo.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-700' :
+                                                            'bg-green-100 text-green-700'
+                                                        }`}>
+                                                        {isRunning ? 'EN MÁQUINA' : trabajo.estado}
+                                                    </span>
+                                                    {trabajo.notas_operario?.includes('REPROCESO') && (
+                                                        <span className="bg-red-100 text-red-700 px-4 py-1.5 rounded-xl font-black text-sm uppercase flex items-center gap-1">
+                                                            <AlertTriangle size={14} /> Reproceso
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Fecha Prometida</p>
-                                                    <div className="flex items-center gap-2 text-xl font-black text-slate-800">
-                                                        <Timer size={24} className="text-slate-400" />
-                                                        {new Date(trabajo.fecha_entrega_proyectada).toLocaleDateString()}
-                                                    </div>
+
+                                                <h4 className="text-3xl font-black text-slate-900 mb-2 uppercase leading-tight">
+                                                    {trabajo.materia_prima?.nombre}
+                                                </h4>
+
+                                                <div className="flex items-center gap-2 text-slate-500 font-bold text-lg mb-6">
+                                                    <User size={20} className="text-blue-500" />
+                                                    {trabajo.venta?.cliente?.razon_social}
                                                 </div>
-                                            </div>
-                                        </div>
 
-                                        {/* Acciones de Control */}
-                                        <div className="bg-slate-50 p-6 lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col justify-center gap-4">
-
-                                            {['Pendiente', 'Impreso'].includes(trabajo.estado) ? (
-                                                <button
-                                                    disabled={processing}
-                                                    onClick={() => handleIniciar(trabajo.id)}
-                                                    className="w-full h-32 bg-green-600 hover:bg-green-500 text-white rounded-[2rem] flex flex-col items-center justify-center gap-2 shadow-lg shadow-green-100 transition-all active:scale-95 disabled:opacity-50"
-                                                >
-                                                    <Play size={40} fill="currentColor" />
-                                                    <span className="font-black text-xl uppercase tracking-tighter">INICIAR TRABAJO</span>
-                                                </button>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    <button
-                                                        disabled={processing}
-                                                        onClick={() => handleTerminar(trabajo.id)}
-                                                        className="w-full h-32 bg-slate-900 hover:bg-slate-800 text-white rounded-[2rem] flex flex-col items-center justify-center gap-2 shadow-xl transition-all active:scale-95 disabled:opacity-50"
-                                                    >
-                                                        <CheckCircle size={40} className="text-green-400" />
-                                                        <span className="font-black text-xl uppercase tracking-tighter">FINALIZAR TRABAJO</span>
-                                                    </button>
-
-                                                    {/* Reporte de Merma Opcional */}
-                                                    <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-                                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 text-center">
-                                                            ¿Hubo Merma / Daño? (Opcional)
-                                                        </label>
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <button
-                                                                onClick={() => setMermaInput({ ...mermaInput, [trabajo.id]: Math.max(0, (mermaInput[trabajo.id] || 0) - 1) })}
-                                                                className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-red-500 rounded-xl font-black transition-colors"
-                                                            >-</button>
-                                                            <div className="flex-1 text-center">
-                                                                <input
-                                                                    type="number"
-                                                                    className="w-full border-0 bg-transparent text-center text-xl font-black text-slate-700 p-0 focus:ring-0"
-                                                                    value={mermaInput[trabajo.id] || 0}
-                                                                    onChange={(e) => setMermaInput({ ...mermaInput, [trabajo.id]: parseInt(e.target.value) || 0 })}
-                                                                />
-                                                                <div className="text-[8px] font-bold text-slate-300 uppercase">Piezas</div>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => setMermaInput({ ...mermaInput, [trabajo.id]: (mermaInput[trabajo.id] || 0) + 1 })}
-                                                                className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-blue-500 rounded-xl font-black transition-colors"
-                                                            >+</button>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Cantidad a Producir</p>
+                                                        <div className="flex items-center gap-2 text-2xl font-black text-slate-800">
+                                                            <Package size={24} className="text-slate-400" />
+                                                            {trabajo.cantidad} <span className="text-sm font-bold text-slate-400 lowercase">uds</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Fecha Prometida</p>
+                                                        <div className="flex items-center gap-2 text-xl font-black text-slate-800">
+                                                            <Timer size={24} className="text-slate-400" />
+                                                            {new Date(trabajo.fecha_entrega_proyectada).toLocaleDateString()}
                                                         </div>
                                                     </div>
                                                 </div>
-                                            )}
+                                            </div>
+
+                                            {/* Acciones de Control */}
+                                            <div className="bg-slate-50 p-6 lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col justify-center gap-4">
+
+                                                {!isRunning ? (
+                                                    <button
+                                                        disabled={processing}
+                                                        onClick={() => handleIniciar(trabajo.id)}
+                                                        className="w-full h-32 bg-green-600 hover:bg-green-500 text-white rounded-[2rem] flex flex-col items-center justify-center gap-2 shadow-lg shadow-green-100 transition-all active:scale-95 disabled:opacity-50"
+                                                    >
+                                                        <Play size={40} fill="currentColor" />
+                                                        <span className="font-black text-xl uppercase tracking-tighter">INICIAR TRABAJO</span>
+                                                    </button>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        <button
+                                                            disabled={processing}
+                                                            onClick={() => handleTerminar(trabajo.id)}
+                                                            className="w-full h-32 bg-slate-900 hover:bg-slate-800 text-white rounded-[2rem] flex flex-col items-center justify-center gap-2 shadow-xl transition-all active:scale-95 disabled:opacity-50"
+                                                        >
+                                                            <CheckCircle size={40} className="text-green-400" />
+                                                            <span className="font-black text-xl uppercase tracking-tighter">FINALIZAR TRABAJO</span>
+                                                        </button>
+
+                                                        {/* Reporte de Merma Opcional */}
+                                                        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 text-center">
+                                                                ¿Hubo Merma / Daño? (Opcional)
+                                                            </label>
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <button
+                                                                    onClick={() => setMermaInput({ ...mermaInput, [trabajo.id]: Math.max(0, (mermaInput[trabajo.id] || 0) - 1) })}
+                                                                    className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-red-500 rounded-xl font-black transition-colors"
+                                                                >-</button>
+                                                                <div className="flex-1 text-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        className="w-full border-0 bg-transparent text-center text-xl font-black text-slate-700 p-0 focus:ring-0"
+                                                                        value={mermaInput[trabajo.id] || 0}
+                                                                        onChange={(e) => setMermaInput({ ...mermaInput, [trabajo.id]: parseInt(e.target.value) || 0 })}
+                                                                    />
+                                                                    <div className="text-[8px] font-bold text-slate-300 uppercase">Piezas</div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setMermaInput({ ...mermaInput, [trabajo.id]: (mermaInput[trabajo.id] || 0) + 1 })}
+                                                                    className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-blue-500 rounded-xl font-black transition-colors"
+                                                                >+</button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

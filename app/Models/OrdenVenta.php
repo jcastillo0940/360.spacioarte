@@ -36,7 +36,13 @@ class OrdenVenta extends Model
         'diseno_minutos_acumulados',
         'diseno_monto_calculado',
         'monto_abonado',
-        'metodo_pago_inicial'
+        'metodo_pago_inicial',
+        'metodo_pago_referencia',
+        'cliente_envia_muestra',
+        'cliente_envia_archivo',
+        'detalle_diseno',
+        'brief_cliente',
+        'archivo_brief_path'
     ];
 
     public function disenoHistorial(): HasMany

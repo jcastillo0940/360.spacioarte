@@ -72,14 +72,13 @@ export default function Index() {
         const badges = {
             'Borrador': 'bg-slate-100 text-slate-700 border-slate-200',
             'Confirmada': 'bg-blue-100 text-blue-700 border-blue-200',
-            'En Proceso de Diseño': 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse',
-            'Diseño Aprobado': 'bg-green-100 text-green-700 border-green-200',
-            'En Impresión': 'bg-cyan-100 text-cyan-700 border-cyan-200',
-            'En Producción': 'bg-indigo-100 text-indigo-700 border-indigo-200',
-            'En Espera de Entrega': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+            'Diseño': 'bg-purple-100 text-purple-700 border-purple-200',
+            'Pre-Prensa': 'bg-cyan-100 text-cyan-700 border-cyan-200',
+            'Producción': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'Terminado': 'bg-green-100 text-green-700 border-green-200',
             'Entregado': 'bg-emerald-600 text-white',
             'Facturada': 'bg-green-100 text-green-700 border-green-200',
-            'Cancelada': 'bg-red-100 text-red-700 border-red-200',
+            'Cancelado': 'bg-red-100 text-red-700 border-red-200',
         };
         return (badges[estado] || 'bg-slate-100 text-slate-700 border-slate-200') + ' border font-black';
     };
@@ -208,9 +207,29 @@ export default function Index() {
                                         </td>
                                         <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(orden.total)}</td>
                                         <td className="px-6 py-4 text-center">
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${getEstadoBadge(orden.estado)}`}>
-                                                {orden.estado}
-                                            </span>
+                                            <select
+                                                value={orden.estado}
+                                                onChange={(e) => {
+                                                    if (confirm(`¿Cambiar estado a ${e.target.value}?`)) {
+                                                        router.put(route('ordenes.estado', orden.id), {
+                                                            estado: e.target.value
+                                                        }, {
+                                                            onSuccess: () => loadData()
+                                                        });
+                                                    }
+                                                }}
+                                                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border-0 cursor-pointer ${getEstadoBadge(orden.estado)}`}
+                                            >
+                                                <option value="Borrador">Borrador</option>
+                                                <option value="Confirmada">Confirmada</option>
+                                                <option value="Diseño">Diseño</option>
+                                                <option value="Pre-Prensa">Nesting</option>
+                                                <option value="Producción">Producción</option>
+                                                <option value="Terminado">Terminado</option>
+                                                <option value="Entregado">Entregado</option>
+                                                <option value="Facturada">Facturada</option>
+                                                <option value="Cancelada">Cancelada</option>
+                                            </select>
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex justify-center gap-2">

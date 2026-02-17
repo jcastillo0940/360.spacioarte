@@ -137,7 +137,7 @@ export default function DesignUpload() {
                                         <p className="text-xs font-bold text-slate-500 uppercase">{orden.cliente}</p>
                                     </div>
                                     <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${orden.estado_diseno === 'Aprobado' ? 'bg-green-100 text-green-600' :
-                                            orden.estado_diseno === 'Rechazado' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                                        orden.estado_diseno === 'Rechazado' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
                                         }`}>
                                         {orden.estado_diseno}
                                     </span>
@@ -157,9 +157,26 @@ export default function DesignUpload() {
                                 </div>
                             </div>
 
-                            <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl">
-                                <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1">Instrucciones</p>
-                                <p className="text-xs font-bold text-blue-900">Al subir el archivo, el sistema notificará automáticamente al cliente vía WhatsApp/Chat para su aprobación inmediata.</p>
+                            <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl space-y-3">
+                                <div>
+                                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 italic">Detalle Interno (Ventas)</p>
+                                    <p className="text-xs font-bold text-blue-900 bg-white/50 p-2 rounded-lg">{orden.detalle_diseno || 'Sin detalles adicionales'}</p>
+                                </div>
+                                {orden.brief_cliente && (
+                                    <div className="pt-2 border-t border-blue-100">
+                                        <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-1 italic">Brief del Cliente</p>
+                                        <p className="text-xs font-bold text-indigo-900 bg-white/50 p-2 rounded-lg">{orden.brief_cliente}</p>
+                                        {orden.archivo_brief_path && (
+                                            <a
+                                                href={orden.archivo_brief_path}
+                                                target="_blank"
+                                                className="mt-2 inline-flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-tighter"
+                                            >
+                                                <FileText size={12} /> Descargar Archivo Cliente
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 

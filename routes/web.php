@@ -18,7 +18,7 @@ use App\Http\Controllers\Finanzas\{EstadoCuentaController, FactoringController};
 use App\Http\Controllers\Inventario\{ItemController, ContactoController, SucursalController};
 
 // Ventas
-use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, CustomerPortalController};
+use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, CustomerPortalController, PosController};
 
 // Compras
 use App\Http\Controllers\Compras\{OrdenCompraController, FacturaCompraController, EgresoController, RecepcionOrdenController, ConsolidarVentasController};
@@ -28,7 +28,7 @@ use App\Http\Controllers\RRHH\{EmpleadoController, NominaController};
 use App\Http\Controllers\Flota\VehiculoController;
 
 // Producción (Módulo Manufactura SRS v2.0)
-use App\Http\Controllers\Produccion\{ProcesoController, PliegoController, PlantaController, RequisicionController};
+use App\Http\Controllers\Produccion\{ProcesoController, PliegoController, PlantaController, RequisicionController, KdsController, DisenoController};
 
 // PWA Sync
 use App\Http\Controllers\PWA\MobileSyncController;
@@ -64,6 +64,8 @@ Route::prefix('tracking')->group(function () {
     Route::post('/{token}/approve', [CustomerPortalController::class, 'approveDesign'])->name('tracking.aprobar');
     Route::post('/{token}/reject', [CustomerPortalController::class, 'rejectDesign'])->name('tracking.rechazar');
     Route::post('/{token}/approve-billing', [CustomerPortalController::class, 'approveBilling'])->name('tracking.aprobar_cobro');
+    Route::post('/{token}/brief', [CustomerPortalController::class, 'submitBrief'])->name('tracking.brief');
+    Route::post('/{token}/own-design', [CustomerPortalController::class, 'submitOwnDesign'])->name('tracking.own_design');
 });
 
 // Ruta rápida para Diseñadores (Carga de diseño)
@@ -73,17 +75,17 @@ Route::middleware(['auth'])->get('/diseno/subir', function() {
 
 // API Interna para Diseño (Usando Sesión Web)
 Route::middleware(['auth'])->prefix('api')->group(function () {
-    Route::get('/ventas/ordenes/{id}/historial', [App\Http\Controllers\Ventas\OrdenVentaController::class, 'getHistorial']);
-    Route::get('/diseno/search', [App\Http\Controllers\Ventas\DesignController::class, 'search']);
-    Route::post('/diseno/upload', [App\Http\Controllers\Ventas\DesignController::class, 'upload']);
-    Route::post('/diseno/timer/start', [App\Http\Controllers\Ventas\DesignController::class, 'startTimer']);
-    Route::post('/diseno/timer/stop', [App\Http\Controllers\Ventas\DesignController::class, 'stopTimer']);
-    Route::post('/diseno/approve-billing', [App\Http\Controllers\Ventas\DesignController::class, 'approveBillingForDesign']);
-    Route::get('/produccion/kds/data', [App\Http\Controllers\Produccion\KdsController::class, 'getData']);
+    Route::get('/ventas/ordenes/{id}/historial', [OrdenVentaController::class, 'getHistorial']);
+    Route::get('/diseno/search', [DisenoController::class, 'search']);
+    Route::post('/diseno/upload', [DisenoController::class, 'enviarPropuesta']); // Mapped for legacy support
+    Route::post('/diseno/timer/start', [DisenoController::class, 'startTimer']);
+    Route::post('/diseno/timer/stop', [DisenoController::class, 'stopTimer']);
+    Route::post('/diseno/approve-billing', [DisenoController::class, 'approveBillingForDesign']);
+    Route::get('/produccion/kds/data', [KdsController::class, 'getData']);
 });
 
 // KDS Board
-Route::get('/produccion/kds', [App\Http\Controllers\Produccion\KdsController::class, 'index'])->name('produccion.kds')->middleware('auth');
+Route::get('/produccion/kds', [KdsController::class, 'index'])->name('produccion.kds')->middleware('auth');
 
 // ========================================================================
 //  RUTAS PROTEGIDAS (ERP CORE + PWA + PRODUCCIÓN)
@@ -109,6 +111,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/pliegos', [PliegoController::class, 'store'])->name('produccion.pliegos.store');
         Route::post('/pliegos/{id}/imprimir', [PliegoController::class, 'imprimir'])->name('produccion.pliegos.imprimir');
 
+        // Diseño
+        Route::get('/diseno', [DisenoController::class, 'index'])->name('produccion.diseno.index');
+        Route::get('/diseno/{id}', [DisenoController::class, 'show'])->name('produccion.diseno.show');
+        Route::post('/diseno/{orden}/iniciar', [DisenoController::class, 'iniciar'])->name('produccion.diseno.iniciar');
+        Route::post('/diseno/{orden}/enviar', [DisenoController::class, 'enviarPropuesta'])->name('produccion.diseno.enviar');
+
         // 3. Planta (Interfaz Touch / Tiempos Reales)
         Route::get('/planta', [PlantaController::class, 'index'])->name('produccion.planta.index');
         Route::get('/planta/cola/{id}', [PlantaController::class, 'mostrarCola'])->name('produccion.planta.cola');
@@ -130,6 +138,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/configuracion/vendedores', [VendedorController::class, 'index']);
         Route::get('/inventario/items', [ItemController::class, 'index']);
         Route::get('/inventario/contactos', [ContactoController::class, 'index']);
+        Route::post('/inventario/contactos', [ContactoController::class, 'store']);
         Route::get('/inventario/sucursales', [SucursalController::class, 'index']);
         Route::get('/inventario/sucursales/contacto/{contacto}', [SucursalController::class, 'getByContacto']);
         Route::get('/contabilidad/cuentas', [AccountController::class, 'index']);
@@ -138,6 +147,16 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/ventas/ordenes', [OrdenVentaController::class, 'index']);
         Route::get('/ventas/ordenes/datos', [OrdenVentaController::class, 'getDatos']);
         Route::get('/ventas/ordenes/{orden}', [OrdenVentaController::class, 'show']);
+        Route::post('/ventas/enviar-chat', function (Illuminate\Http\Request $request) {
+            $request->validate([
+                'mensaje' => 'required|array', 
+                'token'   => 'required|string',
+            ]);
+            $existe = \App\Models\OrdenVenta::where('tracking_token', $request->token)->exists();
+            if (!$existe) return response()->json(['error' => 'Token inválido'], 403);
+            broadcast(new \App\Events\ChatMessageEvent($request->mensaje, $request->token))->toOthers();
+            return response()->json(['status' => 'Enviado']);
+        });
         Route::post('/ventas/ordenes/{orden}/reimprimir', [OrdenVentaController::class, 'reimprimir']);
         Route::get('/ventas/facturas', [FacturaController::class, 'index']);
         Route::get('/ventas/facturas/{factura}', [FacturaController::class, 'show']);
@@ -193,6 +212,14 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('diseno')->group(function () {
             Route::get('/', [App\Http\Controllers\Config\DesignConfigController::class, 'index'])->name('config.diseno.index');
             Route::post('/actualizar', [App\Http\Controllers\Config\DesignConfigController::class, 'update'])->name('config.diseno.update');
+        });
+        Route::prefix('pos')->group(function () {
+            Route::prefix('metodos-pago')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Config\PosMetodoPagoController::class, 'index'])->name('config.pos.metodos.index');
+                Route::post('/', [\App\Http\Controllers\Config\PosMetodoPagoController::class, 'store'])->name('config.pos.metodos.store');
+                Route::put('/{metodo}', [\App\Http\Controllers\Config\PosMetodoPagoController::class, 'update'])->name('config.pos.metodos.update');
+                Route::delete('/{metodo}', [\App\Http\Controllers\Config\PosMetodoPagoController::class, 'destroy'])->name('config.pos.metodos.destroy');
+            });
         });
     });
     
@@ -250,6 +277,15 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::post('/', [NotaCreditoController::class, 'store'])->name('store');
             Route::post('/{nota}/anular', [NotaCreditoController::class, 'anular'])->name('anular');
             Route::get('/{nota}', [NotaCreditoController::class, 'show'])->name('show');
+        });
+        Route::prefix('pos')->name('pos.')->group(function () {
+            Route::get('/', [PosController::class, 'index'])->name('index');
+            Route::post('/abrir', [PosController::class, 'openSession'])->name('abrir');
+            Route::post('/cerrar', [PosController::class, 'closeSession'])->name('cerrar');
+            Route::get('/items', [PosController::class, 'searchItems'])->name('items');
+            Route::get('/ordenes', [PosController::class, 'searchOrders'])->name('ordenes');
+            Route::post('/procesar', [PosController::class, 'processSale'])->name('procesar');
+            Route::get('/corte-x', [PosController::class, 'getCorteX'])->name('corte-x');
         });
     });
     

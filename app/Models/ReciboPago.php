@@ -9,7 +9,7 @@ class ReciboPago extends Model
     protected $table = 'recibos_pago';
 
     protected $fillable = [
-        'numero_recibo', 'factura_venta_id', 'bank_account_id', 
+        'numero_recibo', 'factura_venta_id', 'bank_account_id', 'pos_sesion_id',
         'fecha_pago', 'monto_pagado', 'metodo_pago', 'referencia', 'notas'
     ];
 

@@ -122,4 +122,29 @@ class Item extends Model
         return $query->where('tipo', 'Inventariable')
                      ->whereRaw('stock_actual <= stock_minimo');
     }
+    /**
+     * Relación con las recetas donde este item es el producto final.
+     */
+    public function ingredientes(): HasMany
+    {
+        return $this->hasMany(Receta::class, 'producto_id');
+    }
+
+    /**
+     * Insumos directos (Items) que componen este producto.
+     */
+    public function insumos(): BelongsToMany
+    {
+        return $this->belongsToMany(Item::class, 'recetas', 'producto_id', 'insumo_id')
+                    ->withPivot('cantidad', 'unidad')
+                    ->withTimestamps();
+    }
+
+    /**
+     * Recetas donde este item es un insumo.
+     */
+    public function recetasDondeEsInsumo(): HasMany
+    {
+        return $this->hasMany(Receta::class, 'insumo_id');
+    }
 }

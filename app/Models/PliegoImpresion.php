@@ -9,9 +9,11 @@ class PliegoImpresion extends Model
     protected $table = 'pliegos_impresion';
 
     protected $fillable = [
-        'item_id', // El sustrato (ej. Papel A3)
+        'item_id',
         'operario_id',
-        'estado'
+        'estado',
+        'material_utilizado_id',
+        'cantidad_material'
     ];
 
     public function materiaPrima()
