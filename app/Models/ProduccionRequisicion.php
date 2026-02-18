@@ -20,4 +20,8 @@ class ProduccionRequisicion extends Model
     public function autorizador() {
         return $this->belongsTo(User::class, 'jefe_bodega_id');
     }
+
+    public function ordenCompra() {
+        return $this->hasOne(OrdenCompra::class, 'requisicion_id');
+    }
 }

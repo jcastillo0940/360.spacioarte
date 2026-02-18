@@ -57,7 +57,7 @@ export default function Show({ ordenId }) {
             <div className="max-w-5xl mx-auto">
                 <Link href="/compras/ordenes" className="text-blue-600 mb-4 inline-block">Volver</Link>
                 <h1 className="text-3xl font-black mb-4">Orden {orden.numero_orden}</h1>
-                
+
                 <div className="bg-white rounded-lg shadow p-6 mb-6">
                     <h2 className="text-lg font-bold mb-4">Proveedor</h2>
                     <p className="font-bold">{orden.proveedor?.razon_social}</p>
@@ -73,6 +73,7 @@ export default function Show({ ordenId }) {
                         <thead className="bg-slate-100">
                             <tr>
                                 <th className="px-6 py-3 text-left">Producto</th>
+                                <th className="px-6 py-3 text-left">Unidad</th>
                                 <th className="px-6 py-3 text-center">Cantidad</th>
                                 <th className="px-6 py-3 text-right">Costo</th>
                                 <th className="px-6 py-3 text-right">Total</th>
@@ -82,6 +83,7 @@ export default function Show({ ordenId }) {
                             {orden.detalles?.map(detalle => (
                                 <tr key={detalle.id}>
                                     <td className="px-6 py-4">{detalle.item?.nombre}</td>
+                                    <td className="px-6 py-4">{detalle.unit?.nombre || 'Und. Base'}</td>
                                     <td className="px-6 py-4 text-center">{detalle.cantidad}</td>
                                     <td className="px-6 py-4 text-right">{formatCurrency(detalle.costo_unitario)}</td>
                                     <td className="px-6 py-4 text-right">{formatCurrency(detalle.total)}</td>

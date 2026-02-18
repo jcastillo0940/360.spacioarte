@@ -141,6 +141,14 @@ class Item extends Model
     }
 
     /**
+     * Unidades de medida alternativas (Empaques, cajas, paquetes)
+     */
+    public function units(): HasMany
+    {
+        return $this->hasMany(ItemUnit::class);
+    }
+
+    /**
      * Recetas donde este item es un insumo.
      */
     public function recetasDondeEsInsumo(): HasMany

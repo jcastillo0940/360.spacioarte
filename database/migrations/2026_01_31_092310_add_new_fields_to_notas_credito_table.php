@@ -9,16 +9,21 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Agregar 'Aplicada' al enum de estado
-        DB::statement("ALTER TABLE notas_credito MODIFY COLUMN estado ENUM('Activa', 'Anulada', 'Aplicada') NOT NULL DEFAULT 'Activa'");
-        
-        // 2. Agregar campo es_merma
+        // 1. Modificar columnas existentes
         Schema::table('notas_credito', function (Blueprint $table) {
-            $table->boolean('es_merma')->default(false)->after('estado')
+            $table->foreignId('factura_venta_id')->nullable()->change();
+            
+            // Agregar nuevos campos
+            $table->unsignedBigInteger('contacto_id')->nullable()->after('factura_venta_id');
+            $table->string('factura_manual_ref')->nullable()->after('contacto_id');
+            $table->date('fecha_factura_original')->nullable()->after('factura_manual_ref');
+            $table->boolean('es_merma')->default(false)->after('fecha_factura_original')
                 ->comment('Si es true, va a gasto por merma en lugar de inventario');
         });
 
-        // 3. Agregar foreign key a contacto_id si no existe
+        // 2. Aplicar foreign key y modificar enum de estado
+        DB::statement("ALTER TABLE notas_credito MODIFY COLUMN estado ENUM('Activa', 'Anulada', 'Aplicada') NOT NULL DEFAULT 'Activa'");
+        
         Schema::table('notas_credito', function (Blueprint $table) {
             $table->foreign('contacto_id')->references('id')->on('contactos')->onDelete('restrict');
         });
@@ -28,7 +33,8 @@ return new class extends Migration
     {
         Schema::table('notas_credito', function (Blueprint $table) {
             $table->dropForeign(['contacto_id']);
-            $table->dropColumn('es_merma');
+            $table->dropColumn(['contacto_id', 'factura_manual_ref', 'fecha_factura_original', 'es_merma']);
+            $table->foreignId('factura_venta_id')->nullable(false)->change();
         });
         
         DB::statement("ALTER TABLE notas_credito MODIFY COLUMN estado ENUM('Activa', 'Anulada') NOT NULL DEFAULT 'Activa'");

@@ -126,6 +126,10 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         // 4. Requisiciones (Insumos / Tintas de Bodega)
         Route::get('/requisiciones', [RequisicionController::class, 'index'])->name('produccion.requisiciones.index');
         Route::post('/requisiciones', [RequisicionController::class, 'store'])->name('produccion.requisiciones.store');
+        Route::put('/requisiciones/{id}', [RequisicionController::class, 'update'])->name('produccion.requisiciones.update');
+        Route::delete('/requisiciones/{id}', [RequisicionController::class, 'destroy'])->name('produccion.requisiciones.destroy');
+        Route::post('/requisiciones/{id}/enviar', [RequisicionController::class, 'enviar'])->name('produccion.requisiciones.enviar');
+        Route::post('/requisiciones/{id}/aprobar', [RequisicionController::class, 'aprobar'])->name('produccion.requisiciones.aprobar');
         Route::post('/requisiciones/{id}/entregar', [RequisicionController::class, 'entregar'])->name('produccion.requisiciones.entregar');
     });
 
@@ -221,13 +225,23 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
                 Route::delete('/{metodo}', [\App\Http\Controllers\Config\PosMetodoPagoController::class, 'destroy'])->name('config.pos.metodos.destroy');
             });
         });
+
+        Route::prefix('usuarios')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Config\UserController::class, 'index'])->name('usuarios.index');
+            Route::post('/', [\App\Http\Controllers\Config\UserController::class, 'store'])->name('usuarios.store');
+            Route::put('/{user}', [\App\Http\Controllers\Config\UserController::class, 'update'])->name('usuarios.update');
+            Route::delete('/{user}', [\App\Http\Controllers\Config\UserController::class, 'destroy'])->name('usuarios.destroy');
+        });
     });
     
     // INVENTARIO
     Route::prefix('inventario')->group(function () {
-        Route::get('/items', function() { return Inertia::render('Inventario/Items/Index'); })->name('items.index');
+        Route::get('/items', [ItemController::class, 'index'])->name('items.index');
+        Route::get('/items/crear', [ItemController::class, 'create'])->name('items.crear');
         Route::post('/items', [ItemController::class, 'store'])->name('items.store');
+        Route::get('/items/{item}/editar', [ItemController::class, 'edit'])->name('items.edit');
         Route::put('/items/{item}', [ItemController::class, 'update'])->name('items.update');
+        Route::delete('/items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
         Route::get('/contactos', function() { return Inertia::render('Inventario/Contactos/Index'); })->name('contactos.index');
         Route::post('/contactos', [ContactoController::class, 'store'])->name('contactos.store');
         Route::put('/contactos/{contacto}', [ContactoController::class, 'update'])->name('contactos.update');
@@ -307,7 +321,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/consolidar-ventas', [ConsolidarVentasController::class, 'store'])->name('consolidar.store');
         Route::prefix('ordenes')->group(function () {
             Route::get('/', function() { return Inertia::render('Compras/Ordenes/Index'); })->name('ordenes.index');
-            Route::get('/crear', function() { return Inertia::render('Compras/Ordenes/Create'); })->name('ordenes.create');
+            Route::get('/crear', function() { return Inertia::render('Compras/Ordenes/Create'); })->name('ordenes.crear');
             
             // CORRECCIÓN: Ahora usa OrdenCompraController para guardar
             Route::post('/', [OrdenCompraController::class, 'store'])->name('ordenes.store');
@@ -318,10 +332,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::get('/{orden}/editar', [OrdenCompraController::class, 'edit'])->name('ordenes.edit');
             Route::put('/{orden}', [OrdenCompraController::class, 'update'])->name('ordenes.update');
             Route::delete('/{orden}', [OrdenCompraController::class, 'destroy'])->name('ordenes.destroy');
+            Route::post('/desde-requisicion/{requisicionId}', [OrdenCompraController::class, 'crearDesdeRequisicion'])->name('ordenes.crear_desde_requisicion');
         });
         Route::prefix('facturas')->group(function () {
             Route::get('/', function() { return Inertia::render('Compras/Facturas/Index'); })->name('facturas.index');
             Route::get('/{factura}', function($id) { return Inertia::render('Compras/Facturas/Show', ['facturaId' => $id]); })->name('facturas.show');
+            Route::post('/', [FacturaCompraController::class, 'store'])->name('facturas.store');
             Route::post('/convertir/{orden}', [FacturaCompraController::class, 'convertirDesdeOrden'])->name('facturas.convertir');
             Route::get('/{factura}/pdf', [FacturaCompraController::class, 'generarPDF'])->name('facturas.pdf');
         });
@@ -330,12 +346,10 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::post('/', [EgresoController::class, 'store'])->name('pagos.store');
         });
         Route::prefix('recepciones')->name('recepciones.')->group(function () {
-            Route::get('/', [RecepcionOrdenController::class, 'index'])->name('index');
-            Route::get('/historial', [RecepcionOrdenController::class, 'historial'])->name('historial');
+            Route::get('/', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'index'])->name('index');
+            Route::post('/', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'store'])->name('store');
+            Route::post('/desde-factura/{facturaId}', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'crearDesdeFactura'])->name('crear_desde_factura');
             Route::get('/recibir/{id}', [RecepcionOrdenController::class, 'recibir'])->name('recibir');
-            Route::post('/', [RecepcionOrdenController::class, 'store'])->name('store');
-            Route::post('/buscar-codigo', [RecepcionOrdenController::class, 'buscarPorCodigo'])->name('buscar-codigo');
-            Route::get('/{id}', [RecepcionOrdenController::class, 'show'])->name('show');
         });
     });
     
@@ -354,7 +368,61 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     
     // REPORTES Y FINANZAS
     Route::prefix('reportes')->group(function () {
-        Route::get('/estado-resultados', function() { return Inertia::render('Contabilidad/Reportes/EstadoResultados'); })->name('reportes.financieros.resultados');
+    // --- REPORTES RECONFIGURADOS (5 VISTAS MAESTRAS) ---
+    Route::prefix('reportes')->name('reportes.')->group(function () {
+        Route::get('/', function() { return Inertia::render('Reportes/Index'); })->name('index');
+
+        // 1. Ventas Master View
+        Route::prefix('ventas')->name('ventas.')->group(function () {
+            Route::get('/', [ReporteController::class, 'indexVentas'])->name('index');
+            Route::get('/generales', [ReporteController::class, 'ventasGenerales'])->name('generales');
+            Route::get('/items', [ReporteController::class, 'ventasPorItem'])->name('items');
+            Route::get('/clientes', [ReporteController::class, 'ventasPorCliente'])->name('clientes');
+            Route::get('/rentabilidad', [ReporteController::class, 'rentabilidadItems'])->name('rentabilidad');
+            Route::get('/vendedores', [ReporteController::class, 'ventasPorVendedor'])->name('vendedores');
+            Route::get('/estado-cuenta-cliente', [ReporteController::class, 'estadoCuentaCliente'])->name('estado-cuenta-cliente');
+        });
+
+        // 2. Administrativos Master View
+        Route::prefix('admin')->name('admin.')->group(function () {
+            Route::get('/', [ReporteController::class, 'indexAdmin'])->name('index');
+            Route::get('/cxc', [ReporteController::class, 'cuentasPorCobrar'])->name('cxc');
+            Route::get('/cxp', [ReporteController::class, 'cuentasPorPagar'])->name('cxp');
+            Route::get('/ingresos-gastos', [ReporteController::class, 'ingresosGastos'])->name('ingresos-gastos');
+            Route::get('/inventario-valor', [ReporteController::class, 'valorInventario'])->name('inventario-valor');
+            Route::get('/transacciones', [ReporteController::class, 'transacciones'])->name('transacciones');
+            Route::get('/compras', [ReporteController::class, 'compras'])->name('compras');
+            Route::get('/anual', [ReporteController::class, 'reporteAnual'])->name('anual');
+        });
+
+        // 3. Financieros Master View
+        Route::prefix('financieros')->name('financieros.')->group(function () {
+            Route::get('/', [ReporteController::class, 'indexFinancieros'])->name('index');
+            Route::get('/caja', [ReporteController::class, 'flujoCaja'])->name('caja');
+            Route::get('/cuadre-caja', [ReporteController::class, 'cuadreCaja'])->name('cuadre-caja');
+            Route::get('/reporte-cajas', [ReporteController::class, 'reporteCajas'])->name('reporte-cajas');
+            Route::get('/resultados', [ReporteController::class, 'estadoResultados'])->name('resultados');
+        });
+
+        // 4. Contabilidad Master View
+        Route::prefix('contabilidad')->name('contabilidad.')->group(function () {
+            Route::get('/', [ReporteController::class, 'indexContabilidad'])->name('index');
+            Route::get('/balance-general', [ReporteController::class, 'balanceGeneral'])->name('balance-general');
+            Route::get('/impuestos', [ReporteController::class, 'impuestos'])->name('impuestos');
+            Route::get('/movimientos-cuenta', [ReporteController::class, 'movimientosCuenta'])->name('movimientos-cuenta');
+            Route::get('/libro-diario', [ReporteController::class, 'libroDiario'])->name('libro-diario');
+            Route::get('/auxiliar-tercero', [ReporteController::class, 'auxiliarTercero'])->name('auxiliar-tercero');
+            Route::get('/balance-comprobacion', [ReporteController::class, 'balanceComprobacion'])->name('balance-comprobacion');
+            Route::get('/formas-pago', [ReporteController::class, 'formasPago'])->name('formas-pago');
+        });
+
+        // 5. Exportar Master View
+        Route::prefix('exportar')->name('exportar.')->group(function () {
+            Route::get('/', [ReporteController::class, 'indexExportar'])->name('index');
+            Route::get('/facturas', [ReporteController::class, 'exportFacturas'])->name('facturas');
+            Route::get('/contador', [ReporteController::class, 'exportContador'])->name('contador');
+        });
+    });
     });
     Route::prefix('finanzas')->group(function () {
         Route::get('/estados-cuenta', [EstadoCuentaController::class, 'index'])->name('finanzas.estados-cuenta.index');

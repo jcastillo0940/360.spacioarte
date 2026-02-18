@@ -19,7 +19,7 @@ class RecepcionOrdenController extends Controller
      */
     public function index()
     {
-        $ordenes = OrdenCompra::with(['proveedor', 'detalles.item'])
+        $ordenes = OrdenCompra::with(['proveedor', 'detalles.item', 'detalles.unit'])
             ->whereIn('estado', ['Enviada', 'Confirmada', 'Recibida Parcial'])
             ->orderBy('fecha_entrega', 'asc')
             ->get()
@@ -53,7 +53,7 @@ class RecepcionOrdenController extends Controller
      */
     public function recibir($ordenId)
     {
-        $orden = OrdenCompra::with(['proveedor', 'detalles.item.tax'])->findOrFail($ordenId);
+        $orden = OrdenCompra::with(['proveedor', 'detalles.item.tax', 'detalles.unit'])->findOrFail($ordenId);
 
         // CONVERTIR A NÚMERO
         $orden->total = floatval($orden->total);
@@ -186,11 +186,15 @@ class RecepcionOrdenController extends Controller
                 }
 
                 $detalleOrden = $orden->detalles->firstWhere('item_id', $itemData['item_id']);
+                $factor = $detalleOrden->factor_conversion_usado ?? 1.00;
+                $cantRecibidaBase = floatval($itemData['cantidad_recibida']) * $factor;
                 
                 // Crear detalle de recepción
                 RecepcionOrdenDetalle::create([
                     'recepcion_orden_id' => $recepcion->id,
                     'item_id' => $itemData['item_id'],
+                    'item_unit_id' => $detalleOrden->item_unit_id,
+                    'factor_conversion_usado' => $factor,
                     'cantidad_ordenada' => floatval($detalleOrden->cantidad),
                     'cantidad_recibida' => floatval($itemData['cantidad_recibida']),
                     'costo_unitario' => floatval($detalleOrden->costo_unitario)
@@ -198,11 +202,17 @@ class RecepcionOrdenController extends Controller
 
                 // Actualizar inventario SOLO para items inventariables
                 $item = Item::lockForUpdate()->find($itemData['item_id']);
-                if ($item && $item->tipo === 'Inventariable') {
+                if ($item && ($item->tipo === 'Inventariable' || $item->tipo === 'Consumible' || $item->tipo === 'Materia Prima')) {
                     $valorActual = floatval($item->stock_actual) * floatval($item->costo_promedio);
-                    $valorNuevo = floatval($itemData['cantidad_recibida']) * floatval($detalleOrden->costo_unitario);
+                    
+                    // El costo unitario en la OC es por la UNIDAD DE COMPRA (box, pack, etc.)
+                    // Lo que entra al inventario es en UNIDAD BASE.
+                    // El costo unitario base = costo_unitario OC / factor
+                    $costoUnitarioBase = floatval($detalleOrden->costo_unitario) / ($factor ?: 1);
+                    
+                    $valorNuevo = $cantRecibidaBase * $costoUnitarioBase;
                     $nuevoValorTotal = $valorActual + $valorNuevo;
-                    $nuevoStockTotal = floatval($item->stock_actual) + floatval($itemData['cantidad_recibida']);
+                    $nuevoStockTotal = floatval($item->stock_actual) + $cantRecibidaBase;
                     
                     $nuevoCostoPromedio = ($nuevoStockTotal > 0) ? ($nuevoValorTotal / $nuevoStockTotal) : floatval($item->costo_promedio);
                     
@@ -324,7 +334,8 @@ class RecepcionOrdenController extends Controller
                 'cantidad_ordenada' => floatval($itemEncontrado->cantidad),
                 'cantidad_recibida' => floatval($cantidadRecibida),
                 'cantidad_pendiente' => floatval($itemEncontrado->cantidad) - floatval($cantidadRecibida),
-                'costo_unitario' => floatval($itemEncontrado->costo_unitario)
+                'costo_unitario' => floatval($itemEncontrado->costo_unitario),
+                'unit_name' => $itemEncontrado->unit ? $itemEncontrado->unit->nombre : 'Und. Base'
             ]
         ]);
     }

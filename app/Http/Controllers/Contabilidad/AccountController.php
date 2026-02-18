@@ -10,6 +10,11 @@ class AccountController extends Controller
 {
     public function index()
     {
+        // Si se solicita lista plana (ej. para dropdowns)
+        if (request()->has('flat')) {
+            return response()->json(Account::orderBy('codigo')->get());
+        }
+
         // Retorna el árbol de cuentas para el componente de React/Inertia
         $cuentas = Account::with('children')
             ->whereNull('parent_id')

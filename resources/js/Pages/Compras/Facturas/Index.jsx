@@ -1,10 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import {
+    FileText,
+    Plus,
+    Search,
+    Filter,
+    ChevronRight,
+    Printer,
+    ArrowRight,
+    Clock,
+    DollarSign,
+    CheckCircle2,
+    Briefcase,
+    AlertTriangle,
+    Package
+} from 'lucide-react';
 
 export default function Index() {
+    const { auth } = usePage().props;
     const [facturas, setFacturas] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         loadData();
@@ -24,32 +41,29 @@ export default function Index() {
             });
     };
 
-    const getEstadoBadge = (estado) => {
-        const badges = {
-            'Abierta': 'bg-orange-100 text-orange-700',
-            'Pagada': 'bg-green-100 text-green-700',
-            'Anulada': 'bg-red-100 text-red-700'
-        };
-        return badges[estado] || badges['Abierta'];
+    const handleRecibir = (id) => {
+        if (confirm('¿Generar ingreso de mercancía a bodega desde esta factura?')) {
+            router.post(route('compras.recepciones.crear_desde_factura', id));
+        }
+    };
+
+    const getStatusStyle = (status) => {
+        switch (status) {
+            case 'Abierta': return 'bg-orange-100 text-orange-600 border-orange-200';
+            case 'Pagada': return 'bg-green-100 text-green-600 border-green-200';
+            case 'Anulada': return 'bg-red-100 text-red-600 border-red-200';
+            default: return 'bg-slate-100 text-slate-600 border-slate-200';
+        }
     };
 
     const formatCurrency = (value) => {
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
     };
 
-    if (loading) {
-        return (
-            <AuthenticatedLayout>
-                <Head title="Facturas de Compra" />
-                <div className="max-w-7xl mx-auto">
-                    <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-                        <p className="text-slate-600 mt-4">Cargando facturas...</p>
-                    </div>
-                </div>
-            </AuthenticatedLayout>
-        );
-    }
+    const filteredFacturas = facturas.filter(f =>
+        (f.numero_factura_proveedor?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (f.proveedor?.razon_social?.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
     const stats = {
         total: facturas.length,
@@ -61,127 +75,152 @@ export default function Index() {
     return (
         <AuthenticatedLayout>
             <Head title="Facturas de Compra" />
-            
-            <div className="max-w-7xl mx-auto">
-                <div className="mb-8 flex justify-between items-center">
-                    <div>
-                        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-                            <svg className="w-8 h-8 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            Facturas de Compra
-                        </h1>
-                        <p className="text-slate-600 mt-2">Cuentas por pagar a proveedores</p>
+
+            <div className="max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+                {/* Header Section */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden relative">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-blue-50 rounded-full -mr-48 -mt-48 z-0 opacity-40"></div>
+                    <div className="relative z-10 flex items-center gap-5">
+                        <div className="p-4 bg-slate-900 rounded-3xl text-white shadow-2xl shadow-slate-300">
+                            <FileText size={32} />
+                        </div>
+                        <div>
+                            <h1 className="text-4xl font-black text-slate-900 tracking-tighter">Facturación Compras</h1>
+                            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.15em] mt-1">Cuentas por Pagar y Provisiones</p>
+                        </div>
                     </div>
                 </div>
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-                        <div className="text-sm font-bold text-slate-500 uppercase">Total Facturas</div>
-                        <div className="text-3xl font-black text-slate-900 mt-2">{stats.total}</div>
+                {/* Dashboard Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Facturas</div>
+                        <div className="text-3xl font-black text-slate-900">{stats.total}</div>
                     </div>
-                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-                        <div className="text-sm font-bold text-orange-500 uppercase">Abiertas</div>
-                        <div className="text-3xl font-black text-orange-600 mt-2">{stats.abiertas}</div>
+                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                        <div className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Por Pagar</div>
+                        <div className="text-3xl font-black text-orange-600">{stats.abiertas}</div>
                     </div>
-                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-                        <div className="text-sm font-bold text-green-500 uppercase">Pagadas</div>
-                        <div className="text-3xl font-black text-green-600 mt-2">{stats.pagadas}</div>
+                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                        <div className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-1">Pagadas</div>
+                        <div className="text-3xl font-black text-green-600">{stats.pagadas}</div>
                     </div>
-                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-                        <div className="text-sm font-bold text-red-500 uppercase">Saldo Pendiente</div>
-                        <div className="text-2xl font-black text-red-600 mt-2">{formatCurrency(stats.saldoPendiente)}</div>
+                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                        <div className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Deuda Total</div>
+                        <div className="text-2xl font-black text-red-600">{formatCurrency(stats.saldoPendiente)}</div>
                     </div>
                 </div>
 
-                {/* Tabla */}
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-slate-900 text-white">
-                                <tr>
-                                    <th className="px-6 py-4 text-left text-sm font-bold uppercase">Factura</th>
-                                    <th className="px-6 py-4 text-left text-sm font-bold uppercase">Proveedor</th>
-                                    <th className="px-6 py-4 text-left text-sm font-bold uppercase">Fecha</th>
-                                    <th className="px-6 py-4 text-right text-sm font-bold uppercase">Total</th>
-                                    <th className="px-6 py-4 text-right text-sm font-bold uppercase">Saldo</th>
-                                    <th className="px-6 py-4 text-center text-sm font-bold uppercase">Estado</th>
-                                    <th className="px-6 py-4 text-center text-sm font-bold uppercase">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200">
-                                {facturas.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
-                                            <p className="text-lg font-bold">No hay facturas de compra</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    facturas.map(factura => (
-                                        <tr key={factura.id} className="hover:bg-slate-50 transition">
-                                            <td className="px-6 py-4">
-                                                <span className="font-mono font-bold text-slate-900">{factura.numero_factura_proveedor}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="font-bold text-slate-900">{factura.proveedor?.razon_social}</div>
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-600">
-                                                {new Date(factura.fecha_emision).toLocaleDateString('es-PA')}
-                                            </td>
-                                            <td className="px-6 py-4 text-right font-bold text-slate-900">
-                                                {formatCurrency(factura.total)}
-                                            </td>
-                                            <td className="px-6 py-4 text-right font-bold text-red-600">
-                                                {formatCurrency(factura.saldo_pendiente)}
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${getEstadoBadge(factura.estado)}`}>
-                                                    {factura.estado}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <Link
-                                                        href={`/compras/facturas/${factura.id}`}
-                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                                        title="Ver detalles"
-                                                    >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                        </svg>
-                                                    </Link>
+                {/* Filters & Content */}
+                <div className="space-y-6">
+                    <div className="bg-white p-4 rounded-[1.5rem] border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por factura o proveedor..."
+                                className="w-full bg-slate-50 border-transparent rounded-xl pl-12 pr-4 py-3 font-bold text-slate-700 focus:ring-slate-900 transition-all border outline-none"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                    </div>
 
-                                                    <a 
-                                                        href={`/compras/facturas/${factura.id}/pdf`}
-                                                        target="_blank"
-                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                                        title="Descargar PDF"
-                                                    >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                                        </svg>
-                                                    </a>
-
-                                                    {factura.estado === 'Abierta' && (
-                                                        <Link
-                                                            href={`/compras/pagos/crear?factura=${factura.id}`}
-                                                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                                            title="Registrar pago"
-                                                        >
-                                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                                                            </svg>
-                                                        </Link>
-                                                    )}
+                    <div className="grid grid-cols-1 gap-4">
+                        {loading ? (
+                            <div className="bg-white p-20 rounded-[3rem] border border-slate-200 text-center space-y-4">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
+                                <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Cargando cuentas por pagar...</p>
+                            </div>
+                        ) : filteredFacturas.length === 0 ? (
+                            <div className="bg-white p-20 rounded-[3rem] border border-slate-200 text-center space-y-6 shadow-sm">
+                                <div className="w-24 h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center mx-auto text-slate-300">
+                                    <FileText size={48} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 tracking-tighter">Sin facturas registros</h2>
+                                    <p className="text-slate-400 font-bold uppercase text-[10px] mt-2 tracking-widest">No hay facturas que coincidan con los criterios</p>
+                                </div>
+                            </div>
+                        ) : (
+                            filteredFacturas.map(factura => (
+                                <div key={factura.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 group overflow-hidden">
+                                    <div className="p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                                        <div className="flex items-center gap-6">
+                                            <div className="w-16 h-16 bg-slate-900 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg group-hover:scale-105 transition duration-300">
+                                                <span className="text-[10px] font-black opacity-60 uppercase">FAC</span>
+                                                <span className="text-lg font-black">{factura.id}</span>
+                                            </div>
+                                            <div>
+                                                <div className="flex flex-wrap items-center gap-3 mb-1">
+                                                    <span className="font-black text-slate-900 text-xl tracking-tighter uppercase">{factura.proveedor?.razon_social || 'Proveedor Desconocido'}</span>
+                                                    <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getStatusStyle(factura.estado)}`}>
+                                                        {factura.estado}
+                                                    </span>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                                                <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                    <span className="flex items-center gap-1 font-black text-blue-600"><Briefcase size={12} /> {factura.numero_factura_proveedor}</span>
+                                                    <span className="flex items-center gap-1"><Clock size={12} /> Emisión: {new Date(factura.fecha_emision).toLocaleDateString()}</span>
+                                                    <span className={`flex items-center gap-1 ${new Date(factura.fecha_vencimiento) < new Date() ? 'text-red-500' : ''}`}><AlertTriangle size={12} /> Vence: {new Date(factura.fecha_vencimiento).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col sm:flex-row items-center gap-8">
+                                            <div className="text-center lg:text-right">
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Pendiente</div>
+                                                <div className={`text-2xl font-black ${parseFloat(factura.saldo_pendiente) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                    {formatCurrency(factura.saldo_pendiente)}
+                                                </div>
+                                                <div className="text-[9px] font-bold text-slate-400 uppercase">Total: {formatCurrency(factura.total)}</div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <Link
+                                                    href={route('compras.facturas.show', factura.id)}
+                                                    className="p-3 bg-white text-slate-400 rounded-xl border border-slate-200 hover:text-slate-900 hover:border-slate-900 transition"
+                                                    title="Ver Detalle"
+                                                >
+                                                    <ChevronRight size={20} />
+                                                </Link>
+
+                                                <a
+                                                    href={route('compras.facturas.pdf', factura.id)}
+                                                    target="_blank"
+                                                    className="p-3 bg-white text-slate-400 rounded-xl border border-slate-200 hover:text-red-600 hover:border-red-600 transition"
+                                                    title="Imprimir Factura"
+                                                >
+                                                    <Printer size={20} />
+                                                </a>
+
+                                                {(factura.estado === 'Abierta') && (
+                                                    <Link
+                                                        href={route('compras.pagos.create', { factura: factura.id })}
+                                                        className="p-3 bg-white text-slate-400 rounded-xl border border-slate-200 hover:text-green-600 hover:border-green-600 transition"
+                                                        title="Registrar Pago"
+                                                    >
+                                                        <DollarSign size={20} />
+                                                    </Link>
+                                                )}
+
+                                                <button
+                                                    onClick={() => handleRecibir(factura.id)}
+                                                    className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-600 shadow-lg transition flex items-center gap-2"
+                                                >
+                                                    <Package size={16} /> Recibir Mercancía
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {factura.orden_compra_id && (
+                                        <div className="px-8 py-3 bg-slate-50 border-t border-slate-100 flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                            <CheckCircle2 size={12} className="text-green-500" /> Vinculada a Orden de Compra #{factura.orden_compra_id}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

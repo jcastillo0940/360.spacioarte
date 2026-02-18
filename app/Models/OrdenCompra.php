@@ -13,6 +13,7 @@ class OrdenCompra extends Model
     protected $fillable = [
         'numero_orden',
         'contacto_id',
+        'requisicion_id',
         'fecha_emision',
         'fecha_entrega',
         'total',
@@ -31,13 +32,18 @@ class OrdenCompra extends Model
         return $this->belongsTo(Contacto::class, 'contacto_id');
     }
 
+    public function requisicion(): BelongsTo
+    {
+        return $this->belongsTo(ProduccionRequisicion::class, 'requisicion_id');
+    }
+
     public function detalles(): HasMany
     {
         return $this->hasMany(OrdenCompraDetalle::class, 'orden_compra_id');
     }
     
     public function recepciones()
-{
-    return $this->hasMany(RecepcionOrden::class, 'orden_compra_id');
-}
+    {
+        return $this->hasMany(CompraRecepcion::class, 'orden_compra_id');
+    }
 }

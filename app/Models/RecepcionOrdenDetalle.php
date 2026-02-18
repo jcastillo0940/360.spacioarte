@@ -14,10 +14,20 @@ class RecepcionOrdenDetalle extends Model
     protected $fillable = [
         'recepcion_orden_id',
         'item_id',
+        'item_unit_id',
+        'factor_conversion_usado',
         'cantidad_ordenada',
         'cantidad_recibida',
         'costo_unitario'
     ];
+
+    /**
+     * Relación con ItemUnit
+     */
+    public function unit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'item_unit_id');
+    }
 
     /**
      * Relación con RecepcionOrden

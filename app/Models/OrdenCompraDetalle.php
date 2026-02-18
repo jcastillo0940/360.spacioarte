@@ -12,10 +12,17 @@ class OrdenCompraDetalle extends Model
     protected $fillable = [
         'orden_compra_id',
         'item_id',
+        'item_unit_id',
+        'factor_conversion_usado',
         'cantidad',
         'costo_unitario',
         'total'
     ];
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(ItemUnit::class, 'item_unit_id');
+    }
 
     protected $casts = [
         'cantidad' => 'decimal:2',

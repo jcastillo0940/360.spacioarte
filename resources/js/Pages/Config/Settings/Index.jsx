@@ -4,6 +4,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 
 export default function Index() {
     const [settings, setSettings] = useState(null);
+    const [accounts, setAccounts] = useState([]);
     const { data, setData, post, processing } = useForm({
         razon_social: '',
         ruc: '',
@@ -14,15 +15,28 @@ export default function Index() {
         itbms_porcentaje: 7,
         factura_serie: 'FAC',
         factura_inicio: 1,
+        cta_inventario_id: '',
+        cta_recepcion_transitoria_id: '',
+        cta_itbms_id: '',
+        cta_itbms_compras_id: '',
+        cta_cxp_id: '',
         logo: null
     });
 
     useEffect(() => {
+        // Cargar Configuración
         fetch(route('api.settings.index'))
             .then(res => res.json())
             .then(data => {
                 setSettings(data);
-                setData(data);
+                setData(prev => ({ ...prev, ...data }));
+            });
+
+        // Cargar Cuentas Contables
+        fetch('/api/contabilidad/cuentas?flat=1')
+            .then(res => res.json())
+            .then(data => {
+                setAccounts(data || []);
             });
     }, []);
 
@@ -126,7 +140,7 @@ export default function Index() {
                         </div>
 
                         {/* Facturación */}
-                        <div>
+                        <div className="border-b border-slate-200 pb-6">
                             <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                                 <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -161,6 +175,86 @@ export default function Index() {
                                         onChange={e => setData('itbms_porcentaje', e.target.value)}
                                         className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                                     />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Configuración Contable */}
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Enlace de Cuentas Contables
+                            </h2>
+                            <p className="text-xs text-slate-500 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100 italic">
+                                Configura las cuentas necesarias para que el sistema genere los asientos contables automáticos en compras y recepciones.
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-black uppercase text-slate-500 mb-2 tracking-widest">Cuenta de Inventario</label>
+                                    <select
+                                        value={data.cta_inventario_id || ''}
+                                        onChange={e => setData('cta_inventario_id', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border-slate-200 bg-slate-50 font-bold text-slate-700 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Seleccionar Cuenta --</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.codigo} - {acc.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black uppercase text-slate-500 mb-2 tracking-widest">Cuenta Puente (Recepción)</label>
+                                    <select
+                                        value={data.cta_recepcion_transitoria_id || ''}
+                                        onChange={e => setData('cta_recepcion_transitoria_id', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border-slate-200 bg-slate-50 font-bold text-slate-700 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Seleccionar Cuenta --</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.codigo} - {acc.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black uppercase text-slate-500 mb-2 tracking-widest">Cuenta ITBMS por Pagar (Ventas)</label>
+                                    <select
+                                        value={data.cta_itbms_id || ''}
+                                        onChange={e => setData('cta_itbms_id', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border-slate-200 bg-slate-50 font-bold text-slate-700 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Seleccionar Cuenta --</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.codigo} - {acc.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black uppercase text-slate-500 mb-2 tracking-widest">Cuenta ITBMS por Cobrar (Compras)</label>
+                                    <select
+                                        value={data.cta_itbms_compras_id || ''}
+                                        onChange={e => setData('cta_itbms_compras_id', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border-slate-200 bg-slate-50 font-bold text-slate-700 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Seleccionar Cuenta --</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.codigo} - {acc.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black uppercase text-slate-500 mb-2 tracking-widest">Cuenta por Pagar (CXP)</label>
+                                    <select
+                                        value={data.cta_cxp_id || ''}
+                                        onChange={e => setData('cta_cxp_id', e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border-slate-200 bg-slate-50 font-bold text-slate-700 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Seleccionar Cuenta --</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.codigo} - {acc.nombre}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                         </div>

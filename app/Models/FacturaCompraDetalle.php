@@ -12,6 +12,8 @@ class FacturaCompraDetalle extends Model
     protected $fillable = [
         'factura_compra_id',
         'item_id',
+        'item_unit_id',
+        'factor_conversion_usado',
         'cantidad',
         'costo_unitario',
         'subtotal',
@@ -19,6 +21,11 @@ class FacturaCompraDetalle extends Model
         'monto_itbms',
         'total'
     ];
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(ItemUnit::class, 'item_unit_id');
+    }
 
     protected $casts = [
         'cantidad' => 'decimal:2',

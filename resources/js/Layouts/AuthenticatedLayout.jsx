@@ -43,7 +43,7 @@ export default function AuthenticatedLayout({ children }) {
         }
     };
 
-    // Estructura de Menú Corregida
+    // Estructura de Menú ERP Premium
     const menuItems = [
         {
             name: 'Dashboard',
@@ -56,7 +56,40 @@ export default function AuthenticatedLayout({ children }) {
             roles: null
         },
         {
-            name: 'Operaciones',
+            name: 'Compras & Prov.',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+            ),
+            roles: ['Administrador Total', 'Jefe de Bodega'],
+            submenu: [
+                { name: 'Órdenes de Compra', href: route('compras.ordenes.index') },
+                { name: 'Facturas de Proveedor', href: route('compras.facturas.index') },
+                { name: 'Ingresos a Bodega', href: route('compras.recepciones.index') },
+                { name: 'Egresos / Pagos', href: route('compras.pagos.create') },
+                { name: 'Directorio Proveedores', href: route('contactos.index') }
+            ]
+        },
+        {
+            name: 'Ventas & Clientes',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+            ),
+            roles: ['Administrador Total', 'Vendedor', 'Atención al Cliente'],
+            submenu: [
+                { name: 'Punto de Venta (POS)', href: route('pos.index') },
+                { name: 'Órdenes de Trabajo', href: route('ordenes.index') },
+                { name: 'Facturación Clientes', href: route('facturas.index') },
+                { name: 'Notas de Crédito', href: route('ventas.nc.index') },
+                { name: 'Recibos de Cobro', href: route('cobros.create') },
+                { name: 'Base de Clientes', href: route('contactos.index') }
+            ]
+        },
+        {
+            name: 'Producción',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -68,44 +101,25 @@ export default function AuthenticatedLayout({ children }) {
                 { name: 'Cola de Diseño', href: route('produccion.diseno.index'), roles: ['Administrador Total', 'Diseñador'] },
                 { name: 'Nesting / Pliegos', href: route('produccion.pliegos.index'), roles: ['Administrador Total', 'Impresor'] },
                 { name: 'Control de Planta', href: route('produccion.planta.index'), roles: ['Administrador Total', 'Operador de Máquina'] },
-                { name: 'Bodega / Requisiciones', href: route('produccion.requisiciones.index'), roles: ['Administrador Total', 'Jefe de Bodega'] },
-                { name: 'Gestión de Insumos', href: route('items.index'), roles: ['Administrador Total', 'Jefe de Bodega'] }
+                { name: 'Requisiciones Insumos', href: route('produccion.requisiciones.index'), roles: ['Administrador Total', 'Jefe de Bodega'] }
             ]
         },
         {
-            name: 'Ciclo Comercial',
-            icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-            ),
-            roles: ['Administrador Total', 'Vendedor', 'Cobrador', 'Atención al Cliente'],
-            submenu: [
-                { name: 'Punto de Venta (POS)', href: route('pos.index') },
-                { name: 'Órdenes de Venta', href: route('ordenes.index') },
-                { name: 'Facturación', href: route('facturas.index') },
-                { name: 'Notas de Crédito', href: route('ventas.nc.index') },
-                { name: 'Cobros / Recibos', href: route('cobros.create') },
-                { name: 'Órdenes de Compra', href: route('compras.ordenes.index'), roles: ['Administrador Total', 'Jefe de Bodega'] },
-                { name: 'Facturas de Compra', href: route('compras.facturas.index'), roles: ['Administrador Total'] }
-            ]
-        },
-        {
-            name: 'Inventario',
+            name: 'Inventarios',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
             ),
-            roles: ['Administrador Total', 'Vendedor', 'Jefe de Bodega'],
+            roles: ['Administrador Total', 'Jefe de Bodega'],
             submenu: [
-                { name: 'Catálogo Productos', href: route('items.index') },
-                { name: 'Contactos / Clientes', href: route('contactos.index') },
-                { name: 'Sucursales / Almacén', href: route('sucursales.index') }
+                { name: 'Catálogo Maestro', href: route('items.index') },
+                { name: 'Sucursales / Bodegas', href: route('sucursales.index') },
+                { name: 'Ajustes de Stock', href: '#', roles: ['Administrador Total'] }
             ]
         },
         {
-            name: 'Finanzas y RRHH',
+            name: 'Tesorería',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -113,25 +127,40 @@ export default function AuthenticatedLayout({ children }) {
             ),
             roles: ['Administrador Total', 'Cobrador'],
             submenu: [
-                { name: 'Gestión Bancaria', href: route('bancos.index') },
-                { name: 'Catálogo Contable', href: route('accounts.index') },
-                { name: 'Libro Diario', href: route('contabilidad.diario') },
+                { name: 'Cajas y Bancos', href: route('bancos.index') },
                 { name: 'Factoring', href: route('finanzas.factoring.index') },
-                { name: 'Nómina de Empleados', href: route('rrhh.empleados.index'), roles: ['Administrador Total'] },
-                { name: 'Pagos de Nómina', href: route('rrhh.nomina.index'), roles: ['Administrador Total'] }
+                { name: 'Libro Diario', href: route('contabilidad.diario') },
+                { name: 'Plan de Cuentas', href: route('accounts.index') }
             ]
         },
         {
-            name: 'Reportes',
+            name: 'Capital Humano',
             icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 2v-6m-8 13h11a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
             ),
             roles: ['Administrador Total'],
             submenu: [
-                { name: 'Estado Resultados', href: route('reportes.financieros.resultados') },
-                { name: 'Estados de Cuenta', href: route('finanzas.estados-cuenta.index') }
+                { name: 'Colaboradores', href: route('rrhh.empleados.index') },
+                { name: 'Nómina Operativa', href: route('rrhh.nomina.index') }
+            ]
+        },
+        {
+            name: 'Reportes & BI',
+            icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+            ),
+            roles: ['Administrador Total'],
+            submenu: [
+                { name: 'Todos los Reportes', href: route('reportes.index') },
+                { name: 'Ventas', href: route('reportes.ventas.index') },
+                { name: 'Administrativos', href: route('reportes.admin.index') },
+                { name: 'Financieros', href: route('reportes.financieros.index') },
+                { name: 'Contabilidad', href: route('reportes.contabilidad.index') },
+                { name: 'Exportar Datos', href: route('reportes.exportar.index') }
             ]
         },
         {
@@ -145,10 +174,10 @@ export default function AuthenticatedLayout({ children }) {
             roles: ['Administrador Total'],
             submenu: [
                 { name: 'Ajustes Generales', href: route('settings.index') },
+                { name: 'Usuarios y Roles', href: route('usuarios.index') },
                 { name: 'Parámetros Sistema', href: route('params.index') },
-                { name: 'Métodos de Pago POS', href: route('config.pos.metodos.index') },
-                { name: 'Gestión Vendedores', href: route('vendedores.index') },
-                { name: 'Plantillas de Diseño', href: route('config.diseno.index') }
+                { name: 'Equipo de Ventas', href: route('vendedores.index') },
+                { name: 'Plantillas Diseño', href: route('config.diseno.index') }
             ]
         },
     ];

@@ -37,9 +37,14 @@ class SettingsController extends Controller
             'itbms_porcentaje' => 'required|numeric|min:0|max:100',
             'factura_serie' => 'required|string|max:10',
             'factura_inicio' => 'required|integer|min:1',
-            'cta_gasto_salario_id' => 'nullable|exists:chart_of_accounts,id',
-            'cta_retenciones_id' => 'nullable|exists:chart_of_accounts,id',
-            'cta_caja_banco_id' => 'nullable|exists:chart_of_accounts,id',
+            'cta_inventario_id' => 'nullable|exists:accounts,id',
+            'cta_recepcion_transitoria_id' => 'nullable|exists:accounts,id',
+            'cta_itbms_id' => 'nullable|exists:accounts,id',
+            'cta_itbms_compras_id' => 'nullable|exists:accounts,id',
+            'cta_cxp_id' => 'nullable|exists:accounts,id',
+            'cta_gasto_salario_id' => 'nullable|exists:accounts,id',
+            'cta_retenciones_id' => 'nullable|exists:accounts,id',
+            'cta_caja_banco_id' => 'nullable|exists:accounts,id',
             'max_intentos_diseno' => 'required|integer|min:1|max:10'
         ]);
 

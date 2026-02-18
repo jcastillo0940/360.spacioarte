@@ -127,8 +127,32 @@ class PliegoController extends Controller
                 $this->orderService->avanzarOrdenProduccion($orden, OrdenEstado::PRODUCCION->value);
             }
 
+            // Módulo 6.4: Asiento Contable Automático (Reconocimiento del Costo)
+            $config = \App\Models\TenantConfig::getSettings();
+            if ($config->cta_costo_produccion_id && $config->cta_inventario_id) {
+                $valorCosto = $request->cantidad_utilizada * $material->costo_promedio;
+                
+                \App\Services\AccountingService::registrarAsiento(
+                    now(),
+                    "CONS-PLIEGO-{$pliego->id}",
+                    "Consumo de Material en Nesting #{$pliego->id} - Material: {$material->nombre}",
+                    [
+                        [
+                            'account_id' => $config->cta_costo_produccion_id,
+                            'debito' => $valorCosto,
+                            'credito' => 0
+                        ],
+                        [
+                            'account_id' => $config->cta_inventario_id,
+                            'debito' => 0,
+                            'credito' => $valorCosto
+                        ]
+                    ]
+                );
+            }
+
             DB::commit();
-            return back()->with('success', "Pliego impreso. Se descontaron {$request->cantidad_utilizada} unidades de {$material->nombre}.");
+            return back()->with('success', "Pliego impreso. Se descontaron {$request->cantidad_utilizada} unidades de {$material->nombre} y se registró el costo.");
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->with('error', 'Error al imprimir: ' . $e->getMessage());

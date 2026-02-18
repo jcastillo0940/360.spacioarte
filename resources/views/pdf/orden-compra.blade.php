@@ -73,7 +73,8 @@
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width: 50%;">Descripción del Ítem</th>
+                <th style="width: 40%;">Descripción del Ítem</th>
+                <th style="width: 10%;">Unidad</th>
                 <th class="text-center" style="width: 15%;">Cantidad</th>
                 <th class="text-right" style="width: 15%;">Costo Unit.</th>
                 <th class="text-right" style="width: 20%;">Subtotal</th>
@@ -83,6 +84,7 @@
             @foreach($orden->detalles as $detalle)
             <tr>
                 <td>{{ $detalle->item->nombre }}</td>
+                <td>{{ $detalle->unit->nombre ?? 'Base' }}</td>
                 <td class="text-center">{{ number_format($detalle->cantidad, 2) }}</td>
                 <td class="text-right">B/.{{ number_format($detalle->costo_unitario, 2) }}</td>
                 <td class="text-right">B/.{{ number_format($detalle->total, 2) }}</td>

@@ -31,7 +31,7 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    
+
                 },
                 body: JSON.stringify({
                     codigo: codigoBusqueda,
@@ -61,13 +61,13 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
 
     const agregarItemRecibido = (item, detalleOrden) => {
         const itemExistente = itemsRecibidos.find(i => i.item_id === item.id);
-        
+
         if (itemExistente) {
             const nuevaCantidad = itemExistente.cantidad_recibida + 1;
             if (nuevaCantidad <= detalleOrden.cantidad_pendiente) {
-                setItemsRecibidos(items => 
-                    items.map(i => 
-                        i.item_id === item.id 
+                setItemsRecibidos(items =>
+                    items.map(i =>
+                        i.item_id === item.id
                             ? { ...i, cantidad_recibida: nuevaCantidad }
                             : i
                     )
@@ -80,6 +80,7 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
                 item_id: item.id,
                 nombre: item.nombre,
                 codigo: item.codigo,
+                unit_name: detalleOrden.unit_name,
                 cantidad_ordenada: detalleOrden.cantidad_ordenada,
                 cantidad_pendiente: detalleOrden.cantidad_pendiente,
                 cantidad_recibida: 1,
@@ -95,6 +96,7 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
             item_id: detalle.item.id,
             nombre: detalle.item.nombre,
             codigo: detalle.item.codigo,
+            unit_name: detalle.unit?.nombre || 'Und. Base',
             cantidad_ordenada: detalle.cantidad,
             cantidad_pendiente: detalle.cantidad_pendiente,
             cantidad_recibida: 0,
@@ -173,7 +175,7 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
 
             <div className="py-6">
                 <div className="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
-                    
+
                     {/* Info General */}
                     <div className="bg-white rounded-lg shadow-sm p-6">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -277,7 +279,12 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
                                     <tr key={detalle.id}>
                                         <td className="px-6 py-4">
                                             <div className="text-sm font-medium text-gray-900">{detalle.item.nombre}</div>
-                                            <div className="text-xs text-gray-500">{detalle.item.codigo}</div>
+                                            <div className="flex gap-2 items-center">
+                                                <span className="text-xs text-gray-500">{detalle.item.codigo}</span>
+                                                <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase font-bold">
+                                                    {detalle.unit?.nombre || 'Und. Base'}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-right text-sm">{detalle.cantidad}</td>
                                         <td className="px-6 py-4 text-right text-sm font-bold text-orange-600">{detalle.cantidad_pendiente}</td>
@@ -306,7 +313,12 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
                                     <div key={item.item_id} className="flex flex-wrap items-center justify-between p-3 bg-gray-50 rounded-lg">
                                         <div className="w-full md:w-auto mb-2 md:mb-0">
                                             <p className="font-bold text-gray-800">{item.nombre}</p>
-                                            <p className="text-xs text-gray-500">Pendiente: {item.cantidad_pendiente}</p>
+                                            <div className="flex gap-2 items-center text-xs">
+                                                <span className="text-gray-500 font-medium">Pendiente: {item.cantidad_pendiente}</span>
+                                                <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase text-[10px]">
+                                                    {item.unit_name || 'Und. Base'}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <input
@@ -334,12 +346,12 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
                                     <span className="text-gray-600">Total recepción:</span>
                                     <span className="text-2xl font-black text-green-600">${calcularTotalRecibido().toFixed(2)}</span>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                     <div>
                                         <label className="block text-sm font-bold mb-1">Tipo de Cierre</label>
-                                        <select 
-                                            value={tipoRecepcion} 
+                                        <select
+                                            value={tipoRecepcion}
                                             onChange={(e) => setTipoRecepcion(e.target.value)}
                                             className="w-full rounded border-gray-300"
                                         >
@@ -349,9 +361,9 @@ export default function Recibir({ auth, orden, recepcionesPrevias = [] }) {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold mb-1">Notas</label>
-                                        <input 
-                                            type="text" 
-                                            value={observaciones} 
+                                        <input
+                                            type="text"
+                                            value={observaciones}
                                             onChange={(e) => setObservaciones(e.target.value)}
                                             className="w-full rounded border-gray-300"
                                             placeholder="Opcional..."
