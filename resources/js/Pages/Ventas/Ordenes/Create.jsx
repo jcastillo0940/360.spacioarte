@@ -324,7 +324,7 @@ export default function Create() {
                                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                                 >
                                     <option value="">Sin vendedor</option>
-                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
+                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                 </select>
                             </div>
 
