@@ -213,7 +213,7 @@ export default function Edit({ ordenId }) {
                                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                                 >
                                     <option value="">Sin asignar</option>
-                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
+                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                 </select>
                                 <p className="text-xs text-slate-400 mt-1">Valor actual: {formData.vendedor_id || 'ninguno'}</p>
                             </div>
