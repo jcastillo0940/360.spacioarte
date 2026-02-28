@@ -25,6 +25,10 @@ class VendedorController extends Controller
             'meta_mensual' => 'nullable|numeric|min:0'
         ]);
 
+        // Compatibilidad DB: en algunos entornos meta_mensual no acepta NULL.
+        $validated['meta_mensual'] = $validated['meta_mensual'] ?? 0;
+        $validated['porcentaje_comision'] = $validated['porcentaje_comision'] ?? 0;
+
         $vendedor = Vendedor::create($validated);
 
         return redirect()->back()->with('success', 'Vendedor registrado correctamente');
@@ -41,6 +45,10 @@ class VendedorController extends Controller
             'porcentaje_comision' => 'nullable|numeric|min:0|max:100',
             'meta_mensual' => 'nullable|numeric|min:0'
         ]);
+
+        // Compatibilidad DB: en algunos entornos meta_mensual no acepta NULL.
+        $validated['meta_mensual'] = $validated['meta_mensual'] ?? ($vendedor->meta_mensual ?? 0);
+        $validated['porcentaje_comision'] = $validated['porcentaje_comision'] ?? ($vendedor->porcentaje_comision ?? 0);
 
         $vendedor->update($validated);
 

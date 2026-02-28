@@ -17,7 +17,7 @@ class EmpleadoController extends Controller
     {
         $empleados = Empleado::with('puesto.departamento')->latest()->get();
         $puestos = Puesto::all();
-        
+
         // Si es una petición API, devolver JSON
         if (request()->is('api/*') || request()->wantsJson()) {
             return response()->json([
@@ -25,13 +25,13 @@ class EmpleadoController extends Controller
                 'puestos' => $puestos
             ]);
         }
-        
+
         return Inertia::render('RRHH/Empleados/Index', [
             'empleados' => $empleados,
             'puestos' => $puestos
         ]);
     }
-    
+
     /**
      * Procesa el registro de un nuevo colaborador
      */
@@ -51,14 +51,20 @@ class EmpleadoController extends Controller
             'banco_nombre'     => 'nullable|string',
             'banco_cuenta'     => 'nullable|string',
         ]);
-        
+
+        // Compatibilidad DB: fecha_nacimiento es NOT NULL en algunos entornos.
+        // Si no llega desde el front, usamos fecha_ingreso para evitar 500.
+        if (empty($validated['fecha_nacimiento'])) {
+            $validated['fecha_nacimiento'] = $validated['fecha_ingreso'];
+        }
+
         // Generación de Código Correlativo
         $count = Empleado::count() + 1;
         $validated['codigo_empleado'] = 'EMP-' . str_pad($count, 4, '0', STR_PAD_LEFT);
         $validated['activo'] = true;
-        
+
         $empleado = Empleado::create($validated);
-        
+
         // Si es API, devolver JSON
         if (request()->is('api/*') || request()->wantsJson()) {
             return response()->json([
@@ -66,11 +72,11 @@ class EmpleadoController extends Controller
                 'data' => $empleado->load('puesto.departamento')
             ], 201);
         }
-        
+
         // En Inertia redirigimos para que la tabla se refresque automáticamente
         return redirect()->route('rrhh.empleados.index')->with('success', 'Empleado registrado correctamente.');
     }
-    
+
     /**
      * Actualiza empleado existente
      */
@@ -91,30 +97,35 @@ class EmpleadoController extends Controller
             'banco_cuenta'     => 'nullable|string',
             'activo'           => 'boolean',
         ]);
-        
+
+        // Compatibilidad DB: conservar valor existente si no llega fecha_nacimiento.
+        if (empty($validated['fecha_nacimiento'])) {
+            $validated['fecha_nacimiento'] = $empleado->fecha_nacimiento ?: $validated['fecha_ingreso'];
+        }
+
         $empleado->update($validated);
-        
+
         if (request()->is('api/*') || request()->wantsJson()) {
             return response()->json([
                 'message' => 'Empleado actualizado correctamente',
                 'data' => $empleado->fresh()->load('puesto.departamento')
             ]);
         }
-        
+
         return redirect()->route('rrhh.empleados.index')->with('success', 'Empleado actualizado correctamente.');
     }
-    
+
     /**
      * Retorna la estructura organizacional (Organigrama)
      */
     public function estructura()
     {
         $organigrama = Departamento::with('puestos.empleados')->get();
-        
+
         if (request()->is('api/*') || request()->wantsJson()) {
             return response()->json($organigrama);
         }
-        
+
         return Inertia::render('RRHH/Estructura', [
             'departamentos' => $organigrama
         ]);
