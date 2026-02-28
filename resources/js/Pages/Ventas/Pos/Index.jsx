@@ -22,6 +22,7 @@ export default function PosIndex({ sesion, items: initialItems, bancos, paymentT
         recibido: 0,
         referencia: ''
     });
+    const [amount, setAmount] = useState('');
 
     const [showOrdersModal, setShowOrdersModal] = useState(false);
     const [pendingOrders, setPendingOrders] = useState([]);
@@ -123,9 +124,11 @@ export default function PosIndex({ sesion, items: initialItems, bancos, paymentT
 
         // Ajustar el pago para que por defecto sea el saldo pendiente
         const saldo = Number(orden.total_num || 0) - Number(orden.abonado_num || 0);
+        const initialAmount = saldo > 0 ? Number(saldo).toFixed(2) : '';
+        setAmount(initialAmount);
         setPaymentData(prev => ({
             ...prev,
-            recibido: saldo > 0 ? saldo : 0
+            recibido: initialAmount === '' ? 0 : Number(initialAmount)
         }));
 
         setShowOrdersModal(false);
@@ -145,8 +148,12 @@ export default function PosIndex({ sesion, items: initialItems, bancos, paymentT
             });
 
             alert('Venta procesada con éxito. Factura #' + res.data.factura_id);
+            if (res.data.receipt_url) {
+                window.open(res.data.receipt_url, '_blank');
+            }
             setCart([]);
             setShowPaymentModal(false);
+            setAmount('');
             setPaymentData({ ...paymentData, recibido: 0, referencia: '' });
         } catch (e) {
             alert('Error al procesar la venta: ' + e.response?.data?.error);
@@ -437,8 +444,20 @@ export default function PosIndex({ sesion, items: initialItems, bancos, paymentT
                                         <span className="absolute left-8 top-1/2 -translate-y-1/2 text-4xl font-black text-slate-300 group-focus-within:text-purple-200 transition-colors">$</span>
                                         <input
                                             type="number"
-                                            value={paymentData.recibido}
-                                            onChange={e => setPaymentData({ ...paymentData, recibido: e.target.value })}
+                                            value={amount}
+                                            onChange={e => {
+                                                const nextValue = e.target.value;
+                                                if (nextValue === '' || /^\d*([.]\d{0,2})?$/.test(nextValue)) {
+                                                    setAmount(nextValue);
+                                                    setPaymentData({
+                                                        ...paymentData,
+                                                        recibido: nextValue === '' ? 0 : Number(nextValue)
+                                                    });
+                                                }
+                                            }}
+                                            step="0.01"
+                                            min="0"
+                                            placeholder="0.00"
                                             className="w-full bg-[#F5F5F7] border-none rounded-[2rem] py-8 pl-16 pr-8 text-5xl font-black text-slate-900 focus:ring-0 font-mono transition-all"
                                             autoFocus
                                         />

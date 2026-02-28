@@ -7,6 +7,7 @@ use App\Models\OrdenVenta;
 use App\Models\Contacto;
 use App\Models\Item;
 use App\Models\Vendedor;
+use App\Models\User;
 use App\Models\OrdenProduccion;
 use App\Models\DisenoHistorial;
 use Illuminate\Http\Request;
@@ -57,10 +58,10 @@ class OrdenVentaController extends Controller
                 ->where('es_insumo', false)
                 ->get();
 
-            $vendedores = Vendedor::where('activo', true)->get();
+            $vendedores = User::query()->isVendedor()->where('id', '!=', 1)->orderBy('name')->get(['id', 'name']);
 
             // Identificar si el usuario actual es un vendedor
-            $vendedorAsignado = Vendedor::where('user_id', auth()->id())->first();
+            $vendedorAsignado = User::query()->isVendedor()->where('id', auth()->id())->first();
             
             $config = \App\Models\TenantConfig::getSettings();
             
@@ -69,7 +70,7 @@ class OrdenVentaController extends Controller
                 'productos' => $productos,
                 'vendedores' => $vendedores,
                 'payment_terms' => \App\Models\PaymentTerm::all(),
-                'vendedor_asignado_id' => $vendedorAsignado ? $vendedorAsignado->id : null,
+                'vendedor_asignado_id' => $vendedorAsignado?->id,
                 'min_anticipo_porcentaje' => $config->anticipo_minimo_porcentaje ?? 50
             ]);
         } catch (\Exception $e) {
@@ -113,7 +114,7 @@ class OrdenVentaController extends Controller
         $validated = $request->validate([
             'contacto_id' => 'required|exists:contactos,id',
             'sucursal_id' => 'nullable|exists:sucursales,id',
-            'vendedor_id' => 'nullable|exists:vendedores,id',
+            'vendedor_id' => 'nullable|exists:users,id',
             'fecha_emision' => 'required|date',
             'fecha_entrega' => 'required|date|after_or_equal:fecha_emision',
             'cliente_envia_muestra' => 'nullable|boolean',
@@ -163,10 +164,23 @@ class OrdenVentaController extends Controller
             }
 
             // Lógica de vendedor automático
-            $vendedorId = $validated['vendedor_id'];
-            if (!$vendedorId) {
-                $vendedorAsignado = Vendedor::where('user_id', auth()->id())->first();
-                $vendedorId = $vendedorAsignado ? $vendedorAsignado->id : null;
+            $vendedorUserId = $validated['vendedor_id'];
+            if (!$vendedorUserId && auth()->user()?->hasRole('vendedor')) {
+                $vendedorUserId = auth()->id();
+            }
+
+            $vendedorId = null;
+            if ($vendedorUserId) {
+                $vendedor = Vendedor::firstOrCreate(
+                    ['user_id' => $vendedorUserId],
+                    [
+                        'nombre_completo' => User::find($vendedorUserId)?->name ?? 'Vendedor',
+                        'identificacion' => 'AUTO-' . $vendedorUserId,
+                        'email' => User::find($vendedorUserId)?->email ?? ('vendedor' . $vendedorUserId . '@local.test'),
+                        'activo' => true,
+                    ]
+                );
+                $vendedorId = $vendedor->id;
             }
 
             $orden = OrdenVenta::create([
@@ -255,7 +269,7 @@ class OrdenVentaController extends Controller
         $validated = $request->validate([
             'contacto_id' => 'required|exists:contactos,id',
             'sucursal_id' => 'nullable|exists:sucursales,id',
-            'vendedor_id' => 'nullable|exists:vendedores,id',
+            'vendedor_id' => 'nullable|exists:users,id',
             'fecha_emision' => 'required|date',
             'fecha_entrega' => 'nullable|date|after_or_equal:fecha_emision',
             'estado' => 'required|in:' . implode(',', [OrdenEstado::BORRADOR->value, OrdenEstado::CONFIRMADA->value, OrdenEstado::FACTURADA->value, OrdenEstado::CANCELADO->value]),
@@ -291,10 +305,24 @@ class OrdenVentaController extends Controller
             
             $total = $subtotal + $itbms_total;
 
+            $vendedorId = null;
+            if (!empty($validated['vendedor_id'])) {
+                $vendedor = Vendedor::firstOrCreate(
+                    ['user_id' => $validated['vendedor_id']],
+                    [
+                        'nombre_completo' => User::find($validated['vendedor_id'])?->name ?? 'Vendedor',
+                        'identificacion' => 'AUTO-' . $validated['vendedor_id'],
+                        'email' => User::find($validated['vendedor_id'])?->email ?? ('vendedor' . $validated['vendedor_id'] . '@local.test'),
+                        'activo' => true,
+                    ]
+                );
+                $vendedorId = $vendedor->id;
+            }
+
             $orden->update([
                 'contacto_id' => $validated['contacto_id'],
                 'sucursal_id' => $validated['sucursal_id'] ?? $orden->sucursal_id,
-                'vendedor_id' => $validated['vendedor_id'],
+                'vendedor_id' => $vendedorId,
                 'fecha_emision' => $validated['fecha_emision'],
                 'fecha_entrega' => $validated['fecha_entrega'],
                 'estado' => $validated['estado'],

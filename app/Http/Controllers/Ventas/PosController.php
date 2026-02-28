@@ -16,11 +16,14 @@ use App\Models\PaymentTerm;
 use App\Models\PosMetodoPago;
 use App\Models\TenantConfig;
 use App\Models\BankTransaction;
+use App\Jobs\GenerateReceiptPdfJob;
+use App\Http\Requests\Ventas\ProcessPosSaleRequest;
 use App\Services\AccountingService;
 use App\Services\Production\InventoryService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 class PosController extends Controller
@@ -107,16 +110,8 @@ class PosController extends Controller
         return response()->json($ordenes);
     }
 
-    public function processSale(Request $request)
+    public function processSale(ProcessPosSaleRequest $request)
     {
-        $request->validate([
-            'contacto_id' => 'required|exists:contactos,id',
-            'items' => 'required|array|min:1',
-            'metodo_pago' => 'required|string',
-            'monto_pago' => 'required|numeric|min:0',
-            'bank_account_id' => 'required|exists:bank_accounts,id'
-        ]);
-
         $sesion = PosSesion::where('user_id', auth()->id())
             ->where('estado', 'Abierta')
             ->firstOrFail();
@@ -135,65 +130,84 @@ class PosController extends Controller
             }
             $total = round($subtotal + $itbms, 2);
 
-            $factura = FacturaVenta::create([
-                'numero_factura' => 'POS-' . time(), 
-                'contacto_id' => $request->contacto_id,
-                'fecha_emision' => now(),
-                'fecha_vencimiento' => now(),
-                'payment_term_id' => 1, // Contado
-                'subtotal' => $subtotal,
-                'itbms_total' => $itbms,
-                'total' => $total,
-                'saldo_pendiente' => max(0, $total - $request->monto_pago),
-                'estado' => $request->monto_pago >= ($total - 0.01) ? 'Pagada' : 'Abierta',
-                'pos_sesion_id' => $sesion->id
-            ]);
+            $ordenIds = collect($request->items)->pluck('fromOrder')->filter()->unique();
+            $ordenId = $ordenIds->count() === 1 ? $ordenIds->first() : null;
 
-            // 2. Crear Detalles y actualizar stock
-            $inventoryService = new InventoryService();
-            foreach ($request->items as $item) {
-                $lineaSubtotal = ($item['precio'] * $item['cantidad']) - ($item['descuento'] ?? 0);
-                $factura->detalles()->create([
-                    'item_id' => $item['id'],
-                    'cantidad' => $item['cantidad'],
-                    'precio_unitario' => $item['precio'],
-                    'porcentaje_itbms' => 7.00,
-                    'total_item' => round($lineaSubtotal * 1.07, 2)
+            $factura = $ordenId
+                ? FacturaVenta::where('orden_venta_id', $ordenId)->first()
+                : null;
+
+            if (!$factura) {
+                $factura = FacturaVenta::create([
+                    'numero_factura' => 'POS-' . time(),
+                    'contacto_id' => $request->contacto_id,
+                    'orden_venta_id' => $ordenId,
+                    'fecha_emision' => now(),
+                    'fecha_vencimiento' => now(),
+                    'payment_term_id' => 1, // Contado
+                    'subtotal' => $subtotal,
+                    'itbms_total' => $itbms,
+                    'total' => $total,
+                    'saldo_pendiente' => max(0, $total - $request->monto_pago),
+                    'estado' => $request->monto_pago >= ($total - 0.01) ? 'Pagada' : 'Abierta',
+                    'pos_sesion_id' => $sesion->id
                 ]);
 
-                // Descontar stock (Maneja recetas automáticamente)
-                $producto = Item::with('insumos')->find($item['id']);
-                if ($producto) {
-                    $inventoryService->consumirReceta($producto, $item['cantidad']);
+                // 2. Crear Detalles y actualizar stock
+                $inventoryService = new InventoryService();
+                foreach ($request->items as $item) {
+                    $lineaSubtotal = ($item['precio'] * $item['cantidad']) - ($item['descuento'] ?? 0);
+                    $factura->detalles()->create([
+                        'item_id' => $item['id'],
+                        'cantidad' => $item['cantidad'],
+                        'precio_unitario' => $item['precio'],
+                        'porcentaje_itbms' => 7.00,
+                        'total_item' => round($lineaSubtotal * 1.07, 2)
+                    ]);
+
+                    // Descontar stock (Maneja recetas automáticamente)
+                    $producto = Item::with('insumos')->find($item['id']);
+                    if ($producto) {
+                        $inventoryService->consumirReceta($producto, $item['cantidad']);
+                    }
+                }
+
+                // 3. Contabilidad de la Venta (Factura)
+                if ($config) {
+                    AccountingService::registrarAsiento(
+                        $factura->fecha_emision,
+                        $factura->numero_factura,
+                        "Venta POS #" . $factura->numero_factura,
+                        [
+                            ['account_id' => $config->cta_cxc_id, 'debito' => $total, 'credito' => 0],
+                            ['account_id' => $config->cta_ventas_id, 'debito' => 0, 'credito' => $subtotal],
+                            ['account_id' => $config->cta_itbms_id, 'debito' => 0, 'credito' => $itbms],
+                        ]
+                    );
                 }
             }
 
-            // 3. Contabilidad de la Venta (Factura)
-            if ($config) {
-                AccountingService::registrarAsiento(
-                    $factura->fecha_emision,
-                    $factura->numero_factura,
-                    "Venta POS #" . $factura->numero_factura,
-                    [
-                        ['account_id' => $config->cta_cxc_id, 'debito' => $total, 'credito' => 0],
-                        ['account_id' => $config->cta_ventas_id, 'debito' => 0, 'credito' => $subtotal],
-                        ['account_id' => $config->cta_itbms_id, 'debito' => 0, 'credito' => $itbms],
-                    ]
-                );
-            }
+            $montoPago = (float) $request->monto_pago;
+            $nuevoSaldo = max(0, (float) $factura->saldo_pendiente - $montoPago);
+            $factura->saldo_pendiente = $nuevoSaldo;
+            $factura->estado = $nuevoSaldo <= 0.009 ? 'Pagada' : 'Parcialmente Pagada';
+            $factura->save();
 
             // 4. Crear Recibo si hay pago
-            if ($request->monto_pago > 0) {
+            if ($montoPago > 0) {
                 $recibo = ReciboPago::create([
                     'numero_recibo' => 'REC-POS-' . time(),
                     'factura_venta_id' => $factura->id,
                     'bank_account_id' => $request->bank_account_id,
                     'pos_sesion_id' => $sesion->id,
                     'fecha_pago' => now(),
-                    'monto_pagado' => $request->monto_pago,
+                    'monto_pagado' => $montoPago,
                     'metodo_pago' => $request->metodo_pago,
                     'referencia' => $request->referencia
                 ]);
+
+                GenerateReceiptPdfJob::dispatchSync($recibo->id);
+                $recibo->refresh();
 
                 // Afectar Banco
                 $banco = BankAccount::find($request->bank_account_id);
@@ -201,12 +215,12 @@ class PosController extends Controller
                     BankTransaction::create([
                         'bank_account_id' => $banco->id,
                         'tipo' => 'Ingreso',
-                        'monto' => $request->monto_pago,
+                        'monto' => $montoPago,
                         'fecha' => now(),
                         'descripcion' => "Pago POS #" . $factura->numero_factura,
                         'referencia' => $request->referencia,
                     ]);
-                    $banco->increment('saldo_actual', $request->monto_pago);
+                    $banco->increment('saldo_actual', $montoPago);
 
                     // Contabilidad del Pago
                     if ($config && $banco->account_id) {
@@ -215,8 +229,8 @@ class PosController extends Controller
                             $recibo->numero_recibo,
                             "Cobro POS #" . $factura->numero_factura,
                             [
-                                ['account_id' => $banco->account_id, 'debito' => $request->monto_pago, 'credito' => 0],
-                                ['account_id' => $config->cta_cxc_id, 'debito' => 0, 'credito' => $request->monto_pago],
+                                ['account_id' => $banco->account_id, 'debito' => $montoPago, 'credito' => 0],
+                                ['account_id' => $config->cta_cxc_id, 'debito' => 0, 'credito' => $montoPago],
                             ]
                         );
                     }
@@ -228,7 +242,7 @@ class PosController extends Controller
                 PosMovimiento::create([
                     'pos_sesion_id' => $sesion->id,
                     'tipo' => 'Venta',
-                    'monto' => $request->monto_pago,
+                    'monto' => $montoPago,
                     'metodo_pago' => 'Efectivo',
                     'concepto' => 'Venta POS #' . $factura->numero_factura,
                     'user_id' => auth()->id()
@@ -236,12 +250,11 @@ class PosController extends Controller
             }
 
             // 5. Vincular con Orden de Venta si existe
-            $ordenIds = collect($request->items)->pluck('fromOrder')->filter()->unique();
             if ($ordenIds->count() > 0) {
                 foreach ($ordenIds as $ordenId) {
                     $orden = OrdenVenta::find($ordenId);
                     if ($orden) {
-                        $orden->monto_abonado = ($orden->monto_abonado || 0) + $request->monto_pago;
+                        $orden->monto_abonado = ($orden->monto_abonado || 0) + $montoPago;
                         if ($orden->monto_abonado >= $orden->total) {
                             $orden->estado = 'Facturada';
                         }
@@ -251,7 +264,11 @@ class PosController extends Controller
             }
 
             DB::commit();
-            return response()->json(['message' => 'Venta procesada', 'factura_id' => $factura->id]);
+            return response()->json([
+                'message' => 'Venta procesada',
+                'factura_id' => $factura->id,
+                'receipt_url' => isset($recibo) && $recibo->pdf_path ? Storage::url($recibo->pdf_path) : null,
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 500);

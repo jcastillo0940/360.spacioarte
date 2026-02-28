@@ -31,6 +31,12 @@ class User extends Authenticatable
         ];
     }
     
+
+    public function scopeIsVendedor($query)
+    {
+        return $query->role('vendedor');
+    }
+
     public function recepcionesOrdenes()
     {
         return $this->hasMany(RecepcionOrden::class, 'user_id');
