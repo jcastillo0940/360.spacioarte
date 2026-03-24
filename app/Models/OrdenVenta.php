@@ -21,6 +21,8 @@ class OrdenVenta extends Model
         'fecha_entrega',
         'subtotal',
         'itbms_total',
+        'descuento_tipo',
+        'descuento_valor',
         'total',
         'estado',
         'notas',
@@ -71,6 +73,8 @@ class OrdenVenta extends Model
         'fecha_entrega' => 'date',
         'subtotal' => 'decimal:2',
         'itbms_total' => 'decimal:2',
+        'descuento_valor' => 'decimal:2',
+        'descuento_total' => 'decimal:2',
         'total' => 'decimal:2'
     ];
 

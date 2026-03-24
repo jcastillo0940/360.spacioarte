@@ -12,7 +12,10 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             ChartOfAccountsSeeder::class,
             InitialConfigSeeder::class,
+            FamiliaProduccionSeeder::class,
             ProcesoSeeder::class,
+            BaseMaterialCatalogSeeder::class,
+            SupportMaterialCatalogSeeder::class,
             ItemProduccionSeeder::class,
             PosSeeder::class,
         ]);

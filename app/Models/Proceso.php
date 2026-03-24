@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class Proceso extends Model
 {
@@ -12,7 +12,7 @@ class Proceso extends Model
     protected $table = 'procesos';
 
     protected $fillable = [
-        'nombre', 
+        'nombre',
         'tipo_maquina',
         'categoria_tecnologia',
         'ancho_maximo_cm',
@@ -21,12 +21,22 @@ class Proceso extends Model
         'tiempo_estimado_por_unidad',
         'permite_nesting',
         'margen_seguridad_cm',
-        'costo_operativo_promedio', 
-        'capacidad_diaria', 
-        'activo'
+        'costo_operativo_promedio',
+        'capacidad_diaria',
+        'activo',
     ];
 
-    // Relación con las órdenes que están en cola para esta máquina
+    protected $casts = [
+        'ancho_maximo_cm' => 'decimal:2',
+        'largo_maximo_cm' => 'decimal:2',
+        'tiempo_setup_minutos' => 'decimal:2',
+        'tiempo_estimado_por_unidad' => 'decimal:2',
+        'permite_nesting' => 'boolean',
+        'margen_seguridad_cm' => 'decimal:2',
+        'costo_operativo_promedio' => 'decimal:4',
+        'activo' => 'boolean',
+    ];
+
     public function ordenesProduccion()
     {
         return $this->hasMany(OrdenProduccion::class, 'proceso_id');

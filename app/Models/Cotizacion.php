@@ -22,6 +22,9 @@ class Cotizacion extends Model
         'fecha_vencimiento',
         'subtotal',
         'itbms_total',
+        'descuento_tipo',
+        'descuento_valor',
+        'descuento_total',
         'total',
         'notas_internas',
         'terminos_condiciones'
@@ -32,6 +35,8 @@ class Cotizacion extends Model
         'fecha_vencimiento' => 'date',
         'subtotal' => 'decimal:2',
         'itbms_total' => 'decimal:2',
+        'descuento_valor' => 'decimal:2',
+        'descuento_total' => 'decimal:2',
         'total' => 'decimal:2',
     ];
 

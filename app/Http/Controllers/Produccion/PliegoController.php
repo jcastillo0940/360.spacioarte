@@ -68,9 +68,21 @@ class PliegoController extends Controller
 
             foreach ($request->ordenes as $ordenId) {
                 $orden = OrdenProduccion::with(['producto.papelesCompatibles', 'maquina'])->findOrFail($ordenId);
+                $anchoArte = (float) ($orden->producto?->ancho_imprimible ?? 0);
+                $altoArte = (float) ($orden->producto?->largo_imprimible ?? 0);
+                $anchoMaterial = (float) ($material->ancho_cm ?? 0);
+                $altoMaterial = (float) ($material->largo_cm ?? 0);
 
                 if (!$orden->maquina || !$orden->maquina->permite_nesting) {
                     throw new \Exception("La orden #{$orden->id} esta asignada a un proceso que no permite nesting.");
+                }
+
+                if ($anchoArte <= 0 || $altoArte <= 0) {
+                    throw new \Exception("La orden #{$orden->id} ({$orden->producto?->nombre}) no tiene ancho y alto imprimible configurados.");
+                }
+
+                if ($anchoMaterial <= 0 || (!$material->es_rollo && $altoMaterial <= 0)) {
+                    throw new \Exception("El soporte {$material->nombre} no tiene medidas suficientes para nesting.");
                 }
 
                 if ($orden->materia_prima_id && (int) $orden->materia_prima_id !== (int) $request->item_id) {
@@ -80,6 +92,14 @@ class PliegoController extends Controller
                 $papelesCompatibles = $orden->producto?->papelesCompatibles ?? collect();
                 if ($papelesCompatibles->isNotEmpty() && !$papelesCompatibles->contains('id', (int) $request->item_id)) {
                     throw new \Exception("El papel seleccionado no es compatible con {$orden->producto?->nombre}.");
+                }
+
+                if ($orden->maquina?->ancho_maximo_cm && $anchoMaterial > (float) $orden->maquina->ancho_maximo_cm) {
+                    throw new \Exception("El soporte {$material->nombre} excede el ancho maximo de la maquina {$orden->maquina->nombre}.");
+                }
+
+                if (!$material->es_rollo && $orden->maquina?->largo_maximo_cm && $altoMaterial > (float) $orden->maquina->largo_maximo_cm) {
+                    throw new \Exception("El soporte {$material->nombre} excede el largo maximo de la maquina {$orden->maquina->nombre}.");
                 }
 
                 $pliego->items()->attach($orden->id, [

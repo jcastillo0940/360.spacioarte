@@ -15,7 +15,7 @@ import {
     CheckCircle2
 } from 'lucide-react';
 
-export default function Form({ item = null, taxes = [], procesos = [], papeles = [], insumos = [] }) {
+export default function Form({ item = null, taxes = [], itemCategories = [], procesos = [], familiasProduccion = [], papeles = [], insumos = [] }) {
     const isEditing = !!item;
     const [activeTab, setActiveTab] = useState('basico');
     const soportesDisponibles = papeles.filter((papel) => !papel.requires_recipe && papel.id !== item?.id);
@@ -30,12 +30,14 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
         tax_id: item?.tax_id || (taxes.length > 0 ? taxes[0].id : ''),
         unidad_medida: item?.unidad_medida || 'UND',
         categoria: item?.categoria || '',
+        category_id: item?.category_id || '',
         ancho_cm: item?.ancho_cm || '',
         largo_cm: item?.largo_cm || '',
         es_rollo: item?.es_rollo || false,
         margen_seguridad_cm: item?.margen_seguridad_cm || 0.5,
         proceso_id: item?.proceso_id || '',
         item_base_id: item?.item_base_id || '',
+        familia_produccion_id: item?.familia_produccion_id || '',
         es_para_nesting: item?.es_para_nesting || false,
         es_insumo: item?.es_insumo || false,
         requires_recipe: item?.requires_recipe || false,
@@ -53,6 +55,62 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
 
     const esFabricable = !!data.requires_recipe;
     const esSoporte = !!data.es_para_nesting;
+    const familiaSeleccionada = familiasProduccion.find((familia) => String(familia.id) === String(data.familia_produccion_id));
+    const getFamiliaId = (codigo) => familiasProduccion.find((familia) => familia.codigo === codigo)?.id || '';
+    const plantillasFamilia = {
+        SUBL: {
+            titulo: 'Sublimacion',
+            descripcion: 'Usa producto base, soporte de impresion y nesting por pliego o rollo. Ideal para gorras, tazas y textiles sublimados.',
+            sugerencia: {
+                tipo: 'Producto Terminado',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+            },
+        },
+        DTF: {
+            titulo: 'DTF Textil',
+            descripcion: 'Usa prenda base, soporte en rollo y nesting lineal. Ideal para camisetas y textiles.',
+            sugerencia: {
+                tipo: 'Producto Terminado',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+                unidad_medida: 'UND',
+            },
+        },
+        VINIL: {
+            titulo: 'Vinil Impreso',
+            descripcion: 'Usa soporte en rollo, nesting lineal y proceso de impresion o corte. Ideal para stickers, rotulos y decoracion.',
+            sugerencia: {
+                tipo: 'Producto Terminado',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+            },
+        },
+        LASER: {
+            titulo: 'Corte / Laser',
+            descripcion: 'Usa material base, puede requerir nesting por lamina y normalmente no usa soporte de impresion.',
+            sugerencia: {
+                tipo: 'Producto Terminado',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+            },
+        },
+        PROMO: {
+            titulo: 'Promocionales Rigidos',
+            descripcion: 'Usa base fisica y arte aplicado. Normalmente no requiere nesting, pero si receta y control de transformacion.',
+            sugerencia: {
+                tipo: 'Producto Terminado',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+            },
+        },
+    };
+    const plantillaActiva = familiaSeleccionada ? plantillasFamilia[familiaSeleccionada.codigo] : null;
     const resumenRol = esFabricable
         ? 'Producto fabricable'
         : esSoporte
@@ -60,6 +118,124 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
             : data.es_insumo
                 ? 'Insumo interno'
                 : 'Producto o servicio';
+    const recipeChecklist = familiaSeleccionada ? [
+        {
+            id: 'base',
+            label: 'Producto base o bruto',
+            done: !familiaSeleccionada.requiere_material_base || !!data.item_base_id,
+            help: 'Define la base fisica del producto en la pestana Manufactura.',
+        },
+        {
+            id: 'support',
+            label: 'Soporte compatible',
+            done: !familiaSeleccionada.requiere_soporte_impresion || data.papeles_ids.length > 0,
+            help: 'Agrega papel, vinil, film o transfer compatible.',
+        },
+        {
+            id: 'art',
+            label: 'Tamano de arte',
+            done: !familiaSeleccionada.requiere_nesting || (!!data.ancho_imprimible && !!data.largo_imprimible),
+            help: 'Completa ancho y alto imprimible para nesting y costo real.',
+        },
+        {
+            id: 'bom',
+            label: 'Insumos de receta',
+            done: !familiaSeleccionada.requiere_receta || data.ingredientes.length > 0 || !!data.item_base_id,
+            help: 'Registra tintas, laminados, adhesivos y otros consumos.',
+        },
+    ] : [];
+    const plantillasProducto = [
+        {
+            id: 'gorra-sublimada',
+            nombre: 'Gorra sublimada',
+            descripcion: 'Gorra base + papel sublimable + nesting por pliego',
+            config: {
+                familia_produccion_id: getFamiliaId('SUBL'),
+                tipo: 'Producto Terminado',
+                categoria: 'Sublimacion Textil',
+                unidad_medida: 'UND',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+                ancho_imprimible: 9,
+                largo_imprimible: 15,
+                separacion_piezas: 0.5,
+                sangrado: 0.3,
+            },
+        },
+        {
+            id: 'taza-sublimada',
+            nombre: 'Taza sublimada',
+            descripcion: 'Taza base + arte panoramico + soporte de sublimacion',
+            config: {
+                familia_produccion_id: getFamiliaId('SUBL'),
+                tipo: 'Producto Terminado',
+                categoria: 'Sublimacion Rigidos',
+                unidad_medida: 'UND',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+                ancho_imprimible: 20,
+                largo_imprimible: 9,
+                separacion_piezas: 0.5,
+                sangrado: 0.3,
+            },
+        },
+        {
+            id: 'camisa-dtf',
+            nombre: 'Camisa DTF',
+            descripcion: 'Prenda base + film DTF en rollo + nesting lineal',
+            config: {
+                familia_produccion_id: getFamiliaId('DTF'),
+                tipo: 'Producto Terminado',
+                categoria: 'DTF Textil',
+                unidad_medida: 'UND',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+                ancho_imprimible: 28,
+                largo_imprimible: 35,
+                separacion_piezas: 1,
+                sangrado: 0.2,
+            },
+        },
+        {
+            id: 'sticker-vinil',
+            nombre: 'Sticker / vinil',
+            descripcion: 'Soporte en rollo + nesting lineal + corte',
+            config: {
+                familia_produccion_id: getFamiliaId('VINIL'),
+                tipo: 'Producto Terminado',
+                categoria: 'Vinil Impreso',
+                unidad_medida: 'UND',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+                ancho_imprimible: 5,
+                largo_imprimible: 5,
+                separacion_piezas: 0.3,
+                sangrado: 0.2,
+            },
+        },
+        {
+            id: 'llavero-rigido',
+            nombre: 'Llavero / promo rigido',
+            descripcion: 'Base rigida + arte aplicado + terminacion',
+            config: {
+                familia_produccion_id: getFamiliaId('PROMO'),
+                tipo: 'Producto Terminado',
+                categoria: 'Promocionales Rigidos',
+                unidad_medida: 'UND',
+                requires_recipe: true,
+                es_insumo: false,
+                es_para_nesting: false,
+                ancho_imprimible: 4,
+                largo_imprimible: 6,
+                separacion_piezas: 0.3,
+                sangrado: 0.2,
+            },
+        },
+    ];
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -119,6 +295,29 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
         }
     }, [data.requires_recipe, data.es_para_nesting, setData]);
 
+    const aplicarPlantillaFamilia = () => {
+        if (!plantillaActiva?.sugerencia) return;
+
+        Object.entries(plantillaActiva.sugerencia).forEach(([key, value]) => {
+            setData(key, value);
+        });
+    };
+
+    const quickAddSupport = () => {
+        if (!soportesDisponibles.length) return;
+
+        const firstSupportId = soportesDisponibles[0].id;
+        if (!data.papeles_ids.includes(firstSupportId)) {
+            setData('papeles_ids', [...data.papeles_ids, firstSupportId]);
+        }
+    };
+
+    const aplicarPlantillaProducto = (template) => {
+        Object.entries(template.config).forEach(([key, value]) => {
+            setData(key, value);
+        });
+    };
+
     return (
         <AuthenticatedLayout>
             <Head title={isEditing ? `Editar: ${item.nombre}` : "Registrar Nuevo Producto"} />
@@ -174,6 +373,31 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                         <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Caso 3</div>
                         <h3 className="font-black text-slate-900">Insumo interno</h3>
                         <p className="text-xs text-slate-500 mt-2">Activa uso interno si el item no debe venderse directo y solo se consumira en receta.</p>
+                    </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 shadow-sm">
+                    <div className="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Plantillas rapidas</div>
+                            <h3 className="mt-2 text-lg font-black text-slate-900">Productos tipo listos para usar</h3>
+                        </div>
+                        <div className="text-xs font-bold text-slate-500">Aplica una base sugerida y luego ajusta detalles.</div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                        {plantillasProducto.map((template) => (
+                            <button
+                                key={template.id}
+                                type="button"
+                                onClick={() => aplicarPlantillaProducto(template)}
+                                className="rounded-[1.8rem] border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
+                            >
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Plantilla</div>
+                                <h4 className="mt-2 text-sm font-black text-slate-900">{template.nombre}</h4>
+                                <p className="mt-2 text-xs font-bold leading-5 text-slate-500">{template.descripcion}</p>
+                            </button>
+                        ))}
                     </div>
                 </div>
 
@@ -238,14 +462,34 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                                 {errors.codigo && <p className="text-red-500 text-[10px] font-bold uppercase ml-1 italic">{errors.codigo}</p>}
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
-                                                <input
-                                                    type="text"
-                                                    value={data.categoria}
-                                                    onChange={e => setData('categoria', e.target.value)}
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
+                                                    <Link
+                                                        href={route('inventario.categorias.index')}
+                                                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-800"
+                                                    >
+                                                        Configurar catálogo
+                                                    </Link>
+                                                </div>
+                                                <select
+                                                    value={data.category_id}
+                                                    onChange={e => {
+                                                        const selectedId = e.target.value;
+                                                        const selectedCategory = itemCategories.find((category) => String(category.id) === String(selectedId));
+                                                        setData('category_id', selectedId);
+                                                        setData('categoria', selectedCategory?.nombre || '');
+                                                    }}
                                                     className="w-full bg-slate-50 border-slate-200 rounded-2xl px-5 py-4 font-bold text-slate-800 focus:ring-slate-900 focus:border-slate-900 transition-all border"
-                                                    placeholder="Insumos Sublimación"
-                                                />
+                                                >
+                                                    <option value="">Sin categoría</option>
+                                                    {itemCategories.map((category) => (
+                                                        <option key={category.id} value={category.id}>{category.nombre}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-xs text-slate-500 px-1">
+                                                    Las categorías se administran en un catálogo configurable para mantener el inventario ordenado.
+                                                </p>
+                                                {errors.category_id && <p className="text-red-500 text-sm">{errors.category_id}</p>}
                                             </div>
                                         </div>
 
@@ -272,6 +516,27 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                                         : 'Este item funcionara como producto simple, servicio o insumo segun la configuracion adicional que elijas.'}
                                             </p>
                                         </div>
+
+                                        {plantillaActiva && (
+                                            <div className="rounded-[2rem] border border-cyan-200 bg-cyan-50 p-5">
+                                                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                                    <div>
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600">Plantilla recomendada</div>
+                                                        <h3 className="mt-2 text-lg font-black text-cyan-950">{plantillaActiva.titulo}</h3>
+                                                        <p className="mt-2 text-xs font-bold leading-6 text-cyan-800">
+                                                            {plantillaActiva.descripcion}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={aplicarPlantillaFamilia}
+                                                        className="rounded-2xl bg-cyan-700 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-cyan-800"
+                                                    >
+                                                        Aplicar sugerencia
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className={`p-6 rounded-3xl border flex items-center gap-4 ${esFabricable ? 'bg-slate-100 border-slate-200' : 'bg-emerald-50 border-emerald-200'}`}>
                                             <div className={`p-3 rounded-2xl ${esFabricable ? 'bg-slate-300 text-white' : 'bg-emerald-500 text-white'}`}>
@@ -511,6 +776,28 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                                             </select>
                                                             {errors.item_base_id && <p className="text-red-500 text-[10px] font-bold uppercase ml-1 italic">{errors.item_base_id}</p>}
                                                         </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-black text-blue-600 uppercase mb-2 block tracking-[0.2em] ml-1">Familia Productiva</label>
+                                                        <select
+                                                            value={data.familia_produccion_id}
+                                                            onChange={e => setData('familia_produccion_id', e.target.value)}
+                                                            className="w-full bg-white border-blue-200 rounded-2xl px-6 py-4 font-bold text-slate-800 text-lg shadow-sm"
+                                                        >
+                                                            <option value="">Selecciona la familia...</option>
+                                                            {familiasProduccion.map((familia) => (
+                                                                <option key={familia.id} value={familia.id}>
+                                                                    {familia.codigo} - {familia.nombre}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        {errors.familia_produccion_id && <p className="text-red-500 text-[10px] font-bold uppercase ml-1 italic">{errors.familia_produccion_id}</p>}
+                                                        {familiaSeleccionada && (
+                                                            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-blue-500">
+                                                                {familiaSeleccionada.nombre}: {familiaSeleccionada.tipo_consumo_material.replaceAll('_', ' ')}
+                                                            </p>
+                                                        )}
                                                     </div>
 
                                                     <div>
@@ -764,6 +1051,48 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                             </div>
 
                                             <div className="space-y-6">
+                                                {familiaSeleccionada && (
+                                                    <div className="rounded-[2rem] border border-purple-200 bg-white/80 p-6">
+                                                        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                                                            <div>
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500">Checklist industrial</div>
+                                                                <h4 className="mt-2 text-lg font-black text-purple-900 uppercase">{familiaSeleccionada.nombre}</h4>
+                                                                <p className="mt-2 text-xs font-bold leading-6 text-purple-700">
+                                                                    Esta familia espera una receta operativa completa antes de pasar a ventas, nesting y planta.
+                                                                </p>
+                                                            </div>
+                                                            {familiaSeleccionada.requiere_soporte_impresion && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={quickAddSupport}
+                                                                    className="rounded-2xl bg-purple-700 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-purple-800"
+                                                                >
+                                                                    Agregar primer soporte
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="mt-5 grid gap-3 md:grid-cols-2">
+                                                            {recipeChecklist.map((step) => (
+                                                                <div
+                                                                    key={step.id}
+                                                                    className={`rounded-2xl border px-4 py-4 ${
+                                                                        step.done ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <CheckCircle2 size={18} className={step.done ? 'text-emerald-600' : 'text-amber-500'} />
+                                                                        <div>
+                                                                            <p className="text-sm font-black text-slate-900">{step.label}</p>
+                                                                            <p className="mt-1 text-[11px] font-bold leading-5 text-slate-600">{step.help}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <div className="bg-white/80 p-6 rounded-[2rem] border border-purple-100 space-y-6">
                                                     <div>
                                                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500">Paso 1 de la receta</div>

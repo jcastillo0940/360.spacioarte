@@ -15,7 +15,7 @@ use App\Http\Controllers\Contabilidad\{AccountController, BankController, LibroD
 use App\Http\Controllers\Finanzas\{EstadoCuentaController, FactoringController};
 
 // Inventario
-use App\Http\Controllers\Inventario\{ItemController, ContactoController, SucursalController};
+use App\Http\Controllers\Inventario\{ItemController, ItemCategoryController, ContactoController, SucursalController};
 
 // Ventas
 use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, CustomerPortalController, PosController, CotizacionController};
@@ -28,7 +28,7 @@ use App\Http\Controllers\RRHH\{EmpleadoController, NominaController};
 use App\Http\Controllers\Flota\VehiculoController;
 
 // Producción (Módulo Manufactura SRS v2.0)
-use App\Http\Controllers\Produccion\{ProcesoController, PliegoController, PlantaController, RequisicionController, KdsController, DisenoController};
+use App\Http\Controllers\Produccion\{ProcesoController, FamiliaProduccionController, PliegoController, PlantaController, RequisicionController, KdsController, DisenoController};
 
 // PWA Sync
 use App\Http\Controllers\PWA\MobileSyncController;
@@ -101,10 +101,15 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     //  MÓDULO PRODUCCIÓN (UNIFICADO Y CORREGIDO)
     // ========================================================================
     Route::prefix('produccion')->group(function () {
+        Route::get('/familias', [FamiliaProduccionController::class, 'index'])->name('produccion.familias.index');
+        Route::post('/familias', [FamiliaProduccionController::class, 'store'])->name('produccion.familias.store');
+        Route::put('/familias/{familia}', [FamiliaProduccionController::class, 'update'])->name('produccion.familias.update');
+        Route::delete('/familias/{familia}', [FamiliaProduccionController::class, 'destroy'])->name('produccion.familias.destroy');
         // 1. Centros de Trabajo (Máquinas / Configuración)
         Route::get('/procesos', [ProcesoController::class, 'index'])->name('produccion.procesos.index');
         Route::post('/procesos', [ProcesoController::class, 'store'])->name('produccion.procesos.store');
         Route::put('/procesos/{proceso}', [ProcesoController::class, 'update'])->name('produccion.procesos.update');
+        Route::delete('/procesos/{proceso}', [ProcesoController::class, 'destroy'])->name('produccion.procesos.destroy');
 
         // 2. Pliegos (Nesting / Pre-prensa)
         Route::get('/pliegos', [PliegoController::class, 'index'])->name('produccion.pliegos.index');
@@ -243,6 +248,10 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/items/{item}/editar', [ItemController::class, 'edit'])->name('items.edit');
         Route::put('/items/{item}', [ItemController::class, 'update'])->name('items.update');
         Route::delete('/items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
+        Route::get('/categorias', [ItemCategoryController::class, 'index'])->name('inventario.categorias.index');
+        Route::post('/categorias', [ItemCategoryController::class, 'store'])->name('inventario.categorias.store');
+        Route::put('/categorias/{categoria}', [ItemCategoryController::class, 'update'])->name('inventario.categorias.update');
+        Route::delete('/categorias/{categoria}', [ItemCategoryController::class, 'destroy'])->name('inventario.categorias.destroy');
         Route::get('/contactos', function() { return Inertia::render('Inventario/Contactos/Index'); })->name('contactos.index');
         Route::post('/contactos', [ContactoController::class, 'store'])->name('contactos.store');
         Route::put('/contactos/{contacto}', [ContactoController::class, 'update'])->name('contactos.update');
@@ -270,7 +279,9 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('cotizaciones')->group(function () {
             Route::get('/', [CotizacionController::class, 'index'])->name('cotizaciones.index');
             Route::get('/crear', [CotizacionController::class, 'create'])->name('cotizaciones.create');
+            Route::get('/{cotizacion}/editar', [CotizacionController::class, 'edit'])->name('cotizaciones.edit');
             Route::post('/', [CotizacionController::class, 'store'])->name('cotizaciones.store');
+            Route::put('/{cotizacion}', [CotizacionController::class, 'update'])->name('cotizaciones.update');
             Route::post('/{cotizacion}/convertir-orden', [CotizacionController::class, 'convertirAOrden'])->name('cotizaciones.convertir-orden');
             Route::post('/{cotizacion}/convertir-factura', [CotizacionController::class, 'convertirAFactura'])->name('cotizaciones.convertir-factura');
         });

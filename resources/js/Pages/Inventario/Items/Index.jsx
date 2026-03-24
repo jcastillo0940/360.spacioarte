@@ -155,6 +155,11 @@ export default function Index({ items = [] }) {
                                                             <Layers size={10} /> Receta / BOM
                                                         </span>
                                                     )}
+                                                    {item.familia_produccion && (
+                                                        <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-200">
+                                                            {item.familia_produccion.nombre}
+                                                        </span>
+                                                    )}
                                                     {item.es_insumo && (
                                                         <span className="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-orange-200">Uso Interno</span>
                                                     )}

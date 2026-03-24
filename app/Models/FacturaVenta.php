@@ -13,7 +13,7 @@ class FacturaVenta extends Model
     protected $fillable = [
         'numero_factura', 'contacto_id', 'vendedor_id', 'orden_venta_id', 'pos_sesion_id',
         'fecha_emision', 'fecha_vencimiento', 'payment_term_id',
-        'subtotal', 'itbms_total', 'total', 'saldo_pendiente', 'estado', 'cotizacion_id'
+        'subtotal', 'itbms_total', 'descuento_tipo', 'descuento_valor', 'descuento_total', 'total', 'saldo_pendiente', 'estado', 'cotizacion_id'
     ];
 
     public function cliente(): BelongsTo

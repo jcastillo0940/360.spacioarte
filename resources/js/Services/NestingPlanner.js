@@ -36,6 +36,10 @@ const getJobLabel = (job) => (
     job?.producto?.nombre || job?.venta?.numero_orden || `Trabajo ${job?.id}`
 );
 
+const getOrderCode = (job) => (
+    job?.venta?.numero_orden || `OT-${job?.id}`
+);
+
 const createColor = (index) => {
     const palette = [
         { fill: '#0f766e', stroke: '#115e59', text: '#ecfeff' },
@@ -131,6 +135,8 @@ const getBestOrientation = (job, material) => {
 const buildJobState = (job, material, index) => {
     const quantity = Math.max(0, Math.ceil(toNumber(job?.cantidad)));
     const orientation = getBestOrientation(job, material);
+    const artworkWidth = getArtworkWidth(job);
+    const artworkHeight = getArtworkHeight(job);
 
     return {
         id: job.id,
@@ -140,6 +146,9 @@ const buildJobState = (job, material, index) => {
         color: createColor(index),
         label: getJobLabel(job),
         orientation,
+        artworkWidth,
+        artworkHeight,
+        missingArtworkSize: artworkWidth <= 0 || artworkHeight <= 0,
     };
 };
 
@@ -332,12 +341,19 @@ export const isOrderCompatibleWithMaterial = (job, material) => {
 };
 
 export const buildNestingPlan = (orders, material) => {
+    const materialWidth = getMaterialWidth(material);
+    const materialHeight = getMaterialHeight(material);
+
     if (!material) {
         return {
             errors: ['Selecciona primero el papel o soporte para calcular el pliego.'],
             jobs: [],
             preview: null,
             summary: null,
+            diagnostics: {
+                missingMaterialSize: false,
+                invalidJobs: [],
+            },
         };
     }
 
@@ -347,6 +363,10 @@ export const buildNestingPlan = (orders, material) => {
             jobs: [],
             preview: null,
             summary: null,
+            diagnostics: {
+                missingMaterialSize: false,
+                invalidJobs: [],
+            },
         };
     }
 
@@ -354,14 +374,35 @@ export const buildNestingPlan = (orders, material) => {
     const invalidJobs = jobs.filter((job) => !job.orientation);
     const incompatibleJobs = orders.filter((order) => !isOrderCompatibleWithMaterial(order, material));
     const errors = [];
+    const missingMaterialSize = material.es_rollo ? materialWidth <= 0 : materialWidth <= 0 || materialHeight <= 0;
 
     if (incompatibleJobs.length) {
         errors.push('Hay trabajos seleccionados que no son compatibles con el soporte actual.');
     }
 
+    if (missingMaterialSize) {
+        errors.push(
+            material.es_rollo
+                ? 'El soporte tipo rollo no tiene ancho configurado.'
+                : 'El soporte no tiene ancho y largo configurados.'
+        );
+    }
+
     if (invalidJobs.length) {
         errors.push('Algunos trabajos no tienen medidas suficientes para calcular el nesting.');
     }
+
+    const diagnostics = {
+        missingMaterialSize,
+        invalidJobs: invalidJobs.map((job) => ({
+            id: job.id,
+            label: job.label,
+            orderCode: getOrderCode(job.job),
+            missingArtworkSize: job.missingArtworkSize,
+            artworkWidth: job.artworkWidth,
+            artworkHeight: job.artworkHeight,
+        })),
+    };
 
     if (material.es_rollo) {
         const rollPlan = packRoll(jobs, material);
@@ -385,6 +426,7 @@ export const buildNestingPlan = (orders, material) => {
                 unidadMaterial: 'cm lineales',
                 piezasEnVista: rollPlan.count,
             },
+            diagnostics,
         };
     }
 
@@ -411,6 +453,7 @@ export const buildNestingPlan = (orders, material) => {
             piezasEnPrimerPliego: previewSheet.count,
             material: material.nombre,
         },
+        diagnostics,
     };
 };
 

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 use App\Enums\OrdenEstado;
+use App\Services\InventoryMovementService;
 use App\Services\Production\OrderService;
 use App\Services\Production\InventoryService;
 
@@ -18,11 +19,17 @@ class PlantaController extends Controller
 {
     protected OrderService $orderService;
     protected InventoryService $inventoryService;
+    protected InventoryMovementService $movementService;
 
-    public function __construct(OrderService $orderService, InventoryService $inventoryService)
+    public function __construct(
+        OrderService $orderService,
+        InventoryService $inventoryService,
+        InventoryMovementService $movementService
+    )
     {
         $this->orderService = $orderService;
         $this->inventoryService = $inventoryService;
+        $this->movementService = $movementService;
     }
 
     public function index()
@@ -89,7 +96,7 @@ class PlantaController extends Controller
             'cantidad_merma' => 'required|numeric|min:0'
         ]);
 
-        $orden = OrdenProduccion::with('materiaPrima')->findOrFail($id);
+        $orden = OrdenProduccion::with(['materiaPrima', 'producto', 'venta'])->findOrFail($id);
         
         DB::beginTransaction();
         try {
@@ -113,11 +120,42 @@ class PlantaController extends Controller
             
             if ($merma > 0) {
                  // Si hay merma, descontamos ese material extra
-                 if ($orden->materiaPrima) {
-                     $this->inventoryService->consumirReceta($orden->materiaPrima, $merma);
+                 if ($orden->producto) {
+                     $this->inventoryService->consumirReceta($orden->producto, $merma);
                  }
                  // Generar reproceso por la cantidad perdida
                  $this->generarReproceso($orden, $merma);
+            }
+
+            $cantidadBuena = max(0, (float) $orden->cantidad - (float) $merma);
+            if ($cantidadBuena > 0 && $orden->producto && ($orden->producto->requires_recipe || $orden->producto->item_base_id)) {
+                $producto = $orden->producto->fresh();
+                $stockAnterior = (float) $producto->stock_actual;
+                $costoActual = (float) $producto->costo_promedio;
+                $stockPosterior = $stockAnterior + $cantidadBuena;
+
+                $producto->update(['stock_actual' => $stockPosterior]);
+
+                $this->movementService->record(
+                    item: $producto,
+                    naturaleza: 'Entrada',
+                    cantidad: $cantidadBuena,
+                    costoUnitario: $costoActual,
+                    stockAnterior: $stockAnterior,
+                    stockPosterior: $stockPosterior,
+                    costoAnterior: $costoActual,
+                    costoPosterior: $costoActual,
+                    origen: 'Produccion Terminada',
+                    origenId: $orden->id,
+                    referencia: $orden->venta?->numero_orden ?? "OP-{$orden->id}",
+                    observacion: 'Ingreso de producto bueno terminado desde planta',
+                    meta: [
+                        'orden_produccion_id' => $orden->id,
+                        'cantidad_programada' => (float) $orden->cantidad,
+                        'cantidad_buena' => $cantidadBuena,
+                        'cantidad_merma' => (float) $merma,
+                    ]
+                );
             }
 
             // 3. Finalizar orden actual

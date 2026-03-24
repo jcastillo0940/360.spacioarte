@@ -7,6 +7,7 @@ use App\Models\Cotizacion;
 use App\Models\FacturaVenta;
 use App\Models\OrdenVenta;
 use App\Models\PaymentTerm;
+use App\Models\Sucursal;
 use App\Models\Vendedor;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -19,10 +20,7 @@ class CotizacionConversionService
             throw new Exception("La cotizacion esta en un estado no valido para conversion: {$cotizacion->estado}");
         }
 
-        $sucursalId = $extraData['sucursal_id'] ?? null;
-        if ($sucursalId === null) {
-            throw new Exception('Debe indicar la sucursal para convertir la cotizacion en orden de venta.');
-        }
+        $sucursalId = $this->resolverSucursalId($cotizacion, $extraData);
 
         return DB::transaction(function () use ($cotizacion, $extraData, $sucursalId) {
             $ordenVenta = OrdenVenta::create([
@@ -36,13 +34,26 @@ class CotizacionConversionService
                 'fecha_entrega' => $extraData['fecha_entrega'] ?? ($cotizacion->fecha_vencimiento?->toDateString() ?? now()->addDays(7)->toDateString()),
                 'subtotal' => $cotizacion->subtotal,
                 'itbms_total' => $cotizacion->itbms_total,
+                'descuento_tipo' => $cotizacion->descuento_tipo,
+                'descuento_valor' => $cotizacion->descuento_valor ?? 0,
+                'descuento_total' => $cotizacion->descuento_total ?? 0,
                 'total' => $cotizacion->total,
                 'estado' => OrdenEstado::BORRADOR->value,
-                'notas' => $cotizacion->notas_internas,
+                'notas_internas' => $cotizacion->notas_internas,
+                'notas_publicas' => $cotizacion->terminos_condiciones,
             ]);
 
             foreach ($cotizacion->detalles as $detalle) {
                 $porcentajeItbms = $this->calcularPorcentajeItbms($detalle);
+                $item = $detalle->item;
+                $materialSoporteId = null;
+
+                if ($item && method_exists($item, 'papelesCompatibles')) {
+                    $materialSoporteId = $item->papelesCompatibles()
+                        ->materialesSoporte()
+                        ->orderBy('items.id')
+                        ->value('items.id');
+                }
 
                 $ordenVenta->detalles()->create([
                     'item_id' => $detalle->item_id,
@@ -52,6 +63,8 @@ class CotizacionConversionService
                     'porcentaje_descuento' => 0,
                     'subtotal' => $detalle->subtotal,
                     'total' => $detalle->total,
+                    'proceso_id' => $item?->proceso_id,
+                    'material_id' => $materialSoporteId,
                 ]);
             }
 
@@ -92,6 +105,9 @@ class CotizacionConversionService
                 'payment_term_id' => $paymentTermId,
                 'subtotal' => $cotizacion->subtotal,
                 'itbms_total' => $cotizacion->itbms_total,
+                'descuento_tipo' => $cotizacion->descuento_tipo,
+                'descuento_valor' => $cotizacion->descuento_valor ?? 0,
+                'descuento_total' => $cotizacion->descuento_total ?? 0,
                 'total' => $cotizacion->total,
                 'saldo_pendiente' => $cotizacion->total,
                 'estado' => 'Abierta',
@@ -141,5 +157,34 @@ class CotizacionConversionService
     {
         $ultimaFactura = FacturaVenta::latest('id')->first();
         return 'FAC-' . str_pad(($ultimaFactura ? $ultimaFactura->id + 1 : 1), 6, '0', STR_PAD_LEFT);
+    }
+
+    private function resolverSucursalId(Cotizacion $cotizacion, array $extraData): int
+    {
+        if (!empty($extraData['sucursal_id'])) {
+            return (int) $extraData['sucursal_id'];
+        }
+
+        $existente = Sucursal::where('contacto_id', $cotizacion->contacto_id)
+            ->where('activo', true)
+            ->orderBy('id')
+            ->value('id');
+
+        if ($existente) {
+            return (int) $existente;
+        }
+
+        $sucursal = Sucursal::create([
+            'contacto_id' => $cotizacion->contacto_id,
+            'codigo' => 'PRINCIPAL',
+            'nombre' => 'Principal',
+            'direccion' => $cotizacion->cliente?->direccion,
+            'telefono' => $cotizacion->cliente?->telefono,
+            'email' => $cotizacion->cliente?->email,
+            'activo' => true,
+            'notas' => 'Sucursal principal creada automaticamente al convertir cotizacion.',
+        ]);
+
+        return (int) $sucursal->id;
     }
 }

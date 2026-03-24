@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Inventario;
 
 use App\Http\Controllers\Controller;
+use App\Models\FamiliaProduccion;
 use App\Models\Item;
+use App\Models\ItemCategory;
 use App\Models\Tax;
 use App\Models\Proceso;
 use Illuminate\Http\Request;
@@ -21,9 +23,11 @@ class ItemController extends Controller
         // Para la ruta API (si se sigue usando para búsquedas asíncronas)
         if (request()->is('api/*')) {
             return response()->json([
-                'items' => Item::with(['tax', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo'])->get(),
+                'items' => Item::with(['tax', 'category', 'familiaProduccion', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo'])->get(),
                 'taxes' => Tax::all(),
+                'item_categories' => ItemCategory::where('activo', true)->orderBy('nombre')->get(),
                 'procesos' => Proceso::where('activo', true)->get(),
+                'familias_produccion' => FamiliaProduccion::where('activo', true)->orderBy('nombre')->get(),
                 'papeles' => Item::materialesSoporte()->get(),
                 'insumos' => Item::where('activo', true)->get()
             ]);
@@ -31,7 +35,7 @@ class ItemController extends Controller
         
         // Para Inertia - Enviamos los items inicialmente
         return Inertia::render('Inventario/Items/Index', [
-            'items' => Item::with(['tax', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo'])->get()
+            'items' => Item::with(['tax', 'category', 'familiaProduccion', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo'])->get()
         ]);
     }
 
@@ -42,7 +46,9 @@ class ItemController extends Controller
     {
         return Inertia::render('Inventario/Items/Form', [
             'taxes' => Tax::all(),
+            'itemCategories' => ItemCategory::where('activo', true)->orderBy('nombre')->get(),
             'procesos' => Proceso::where('activo', true)->get(),
+            'familiasProduccion' => FamiliaProduccion::where('activo', true)->orderBy('nombre')->get(),
             'papeles' => Item::materialesSoporte()->get(),
             'insumos' => Item::where('activo', true)->get()
         ]);
@@ -62,6 +68,7 @@ class ItemController extends Controller
             'stock_maximo' => 'nullable|numeric|min:0',
             'tax_id' => 'required|exists:taxes,id',
             'categoria' => 'nullable|string|max:100',
+            'category_id' => 'nullable|exists:item_categories,id',
             'unidad_medida' => 'required|string|max:20',
             'ancho_cm' => 'nullable|numeric|min:0',
             'largo_cm' => 'nullable|numeric|min:0',
@@ -78,6 +85,7 @@ class ItemController extends Controller
             'sangrado' => 'nullable|numeric|min:0',
             'proceso_id' => 'nullable|exists:procesos,id',
             'item_base_id' => 'nullable|exists:items,id',
+            'familia_produccion_id' => 'nullable|exists:familias_produccion,id',
             'procesos_ids' => 'nullable|array',
             'procesos_ids.*' => 'exists:procesos,id',
             'papeles_ids' => 'nullable|array',
@@ -127,12 +135,14 @@ class ItemController extends Controller
      */
     public function edit(Item $item)
     {
-        $item->load(['tax', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo']);
+        $item->load(['tax', 'category', 'familiaProduccion', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo']);
         
         return Inertia::render('Inventario/Items/Form', [
             'item' => $item,
             'taxes' => Tax::all(),
+            'itemCategories' => ItemCategory::where('activo', true)->orderBy('nombre')->get(),
             'procesos' => Proceso::where('activo', true)->get(),
+            'familiasProduccion' => FamiliaProduccion::where('activo', true)->orderBy('nombre')->get(),
             'papeles' => Item::materialesSoporte()->get(),
             'insumos' => Item::where('activo', true)->get()
         ]);
@@ -152,6 +162,7 @@ class ItemController extends Controller
             'stock_maximo' => 'nullable|numeric|min:0',
             'tax_id' => 'required|exists:taxes,id',
             'categoria' => 'nullable|string|max:100',
+            'category_id' => 'nullable|exists:item_categories,id',
             'unidad_medida' => 'required|string|max:20',
             'ancho_cm' => 'nullable|numeric|min:0',
             'largo_cm' => 'nullable|numeric|min:0',
@@ -168,6 +179,7 @@ class ItemController extends Controller
             'sangrado' => 'nullable|numeric|min:0',
             'proceso_id' => 'nullable|exists:procesos,id',
             'item_base_id' => 'nullable|exists:items,id',
+            'familia_produccion_id' => 'nullable|exists:familias_produccion,id',
             'procesos_ids' => 'nullable|array',
             'procesos_ids.*' => 'exists:procesos,id',
             'papeles_ids' => 'nullable|array',
@@ -285,8 +297,21 @@ class ItemController extends Controller
 
         $validated['proceso_id'] = $validated['proceso_id'] ?? null;
         $validated['item_base_id'] = $validated['item_base_id'] ?? null;
+        $validated['familia_produccion_id'] = $validated['familia_produccion_id'] ?? null;
+        $validated['category_id'] = $validated['category_id'] ?? null;
+
+        if (!empty($validated['category_id'])) {
+            $categoria = ItemCategory::find($validated['category_id']);
+            $validated['categoria'] = $categoria?->nombre;
+        } elseif (empty($validated['categoria'])) {
+            $validated['categoria'] = null;
+        }
 
         $errors = [];
+
+        $familia = !empty($validated['familia_produccion_id'])
+            ? FamiliaProduccion::find($validated['familia_produccion_id'])
+            : null;
 
         if ($item && !empty($validated['item_base_id']) && (int) $validated['item_base_id'] === (int) $item->id) {
             $errors['item_base_id'] = 'El material base no puede ser el mismo artículo.';
@@ -294,6 +319,41 @@ class ItemController extends Controller
 
         if ($validated['requires_recipe'] && empty($validated['proceso_id']) && empty($validated['procesos_ids'])) {
             $errors['proceso_id'] = 'Define un proceso principal o al menos un proceso compatible para fabricar este producto.';
+        }
+
+        if ($familia) {
+            if ($familia->requiere_material_base && empty($validated['item_base_id'])) {
+                $errors['item_base_id'] = 'La familia productiva seleccionada exige material base.';
+            }
+
+            if ($familia->requiere_soporte_impresion && empty($validated['papeles_ids'])) {
+                $errors['papeles_ids'] = 'La familia productiva seleccionada exige al menos un soporte compatible.';
+            }
+
+            if ($familia->requiere_receta && empty($validated['ingredientes']) && empty($validated['item_base_id'])) {
+                $errors['ingredientes'] = 'La familia productiva seleccionada exige receta o material base para poder fabricar.';
+            }
+
+            if ($familia->requiere_nesting && (empty($validated['ancho_imprimible']) || empty($validated['largo_imprimible']))) {
+                $errors['ancho_imprimible'] = 'La familia productiva seleccionada exige ancho y alto imprimible para nesting.';
+            }
+
+            if ($familia->requiere_nesting && !empty($validated['proceso_id'])) {
+                $procesoPrincipal = Proceso::find($validated['proceso_id']);
+                if ($procesoPrincipal && !$procesoPrincipal->permite_nesting) {
+                    $errors['proceso_id'] = 'La familia productiva seleccionada exige un proceso principal que permita nesting.';
+                }
+            }
+
+            if ($familia->requiere_nesting && !empty($validated['procesos_ids'])) {
+                $procesosConNesting = Proceso::whereIn('id', $validated['procesos_ids'])
+                    ->where('permite_nesting', true)
+                    ->count();
+
+                if ($procesosConNesting === 0) {
+                    $errors['procesos_ids'] = 'La familia productiva seleccionada exige al menos un proceso compatible que permita nesting.';
+                }
+            }
         }
 
         if ($validated['es_para_nesting'] && empty($validated['ancho_cm'])) {
@@ -311,6 +371,10 @@ class ItemController extends Controller
 
             if ($papersCount !== count($validated['papeles_ids'])) {
                 $errors['papeles_ids'] = 'Solo puedes asignar materiales soporte reales: papel, vinilo, transfer o insumos equivalentes.';
+            }
+
+            if (empty($validated['ancho_imprimible']) || empty($validated['largo_imprimible'])) {
+                $errors['ancho_imprimible'] = 'Si el producto usa soportes para nesting, define el ancho y alto imprimible del arte.';
             }
         }
 
@@ -331,6 +395,10 @@ class ItemController extends Controller
 
         if ($validated['es_para_nesting'] && $validated['requires_recipe']) {
             $errors['es_para_nesting'] = 'Un producto fabricable no debe marcarse como material soporte de nesting.';
+        }
+
+        if ($validated['requires_recipe'] && !empty($validated['item_base_id']) && $validated['item_base_id'] === ($validated['papeles_ids'][0] ?? null)) {
+            $errors['item_base_id'] = 'El material base del producto no debe ser el mismo soporte de impresion o nesting.';
         }
 
         if (!empty($validated['procesos_ids'])) {

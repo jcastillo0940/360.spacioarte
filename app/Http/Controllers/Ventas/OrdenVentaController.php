@@ -12,6 +12,7 @@ use App\Models\DisenoHistorial;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 use App\Services\Production\OrderService;
 use App\Enums\OrdenEstado;
@@ -54,6 +55,7 @@ class OrdenVentaController extends Controller
             
             $productos = Item::with([
                     'tax',
+                    'familiaProduccion',
                     'procesosCompatibles',
                     'papelesCompatibles' => fn ($query) => $query->materialesSoporte(),
                 ])
@@ -120,6 +122,8 @@ class OrdenVentaController extends Controller
             'vendedor_id' => 'nullable|exists:vendedores,id',
             'fecha_emision' => 'required|date',
             'fecha_entrega' => 'required|date|after_or_equal:fecha_emision',
+            'descuento_tipo' => 'nullable|in:porcentaje,monto_fijo',
+            'descuento_valor' => 'nullable|numeric|min:0',
             'cliente_envia_muestra' => 'nullable|boolean',
             'cliente_envia_archivo' => 'nullable|boolean',
             'detalle_diseno' => 'nullable|string',
@@ -153,15 +157,37 @@ class OrdenVentaController extends Controller
         DB::beginTransaction();
         try {
             $subtotal = 0;
-            $itbms_total = 0;
             
             foreach ($validated['items'] as $item) {
+                $producto = Item::with('familiaProduccion')->find($item['item_id']);
+
+                if ($producto?->familiaProduccion?->requiere_soporte_impresion && empty($item['material_id'])) {
+                    throw new \RuntimeException("El producto {$producto->nombre} requiere soporte de impresion y aun no tiene material seleccionado.");
+                }
+
+                if ($producto?->familiaProduccion?->requiere_nesting && (empty($item['pliegos_necesarios']) || empty($item['capacidad_por_pliego']))) {
+                    throw new \RuntimeException("El producto {$producto->nombre} requiere nesting calculado antes de guardar la orden.");
+                }
+
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
                 $subtotal += $lineaSubtotal;
-                $itbms_total += $lineaSubtotal * ($item['tasa_itbms'] / 100);
             }
-            
-            $total = $subtotal + $itbms_total;
+
+            $descuentoTotal = $this->calcularDescuentoTotal(
+                $subtotal,
+                $validated['descuento_tipo'] ?? null,
+                (float) ($validated['descuento_valor'] ?? 0)
+            );
+            $factorDescuento = $subtotal > 0 ? ($descuentoTotal / $subtotal) : 0;
+            $itbms_total = 0;
+
+            foreach ($validated['items'] as $item) {
+                $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
+                $subtotalConDescuento = max(0, $lineaSubtotal - ($lineaSubtotal * $factorDescuento));
+                $itbms_total += $subtotalConDescuento * ($item['tasa_itbms'] / 100);
+            }
+
+            $total = max(0, $subtotal - $descuentoTotal) + $itbms_total;
 
             $ultimaOrden = OrdenVenta::latest('id')->first();
             $numeroOrden = 'OV-' . str_pad(($ultimaOrden ? $ultimaOrden->id + 1 : 1), 6, '0', STR_PAD_LEFT);
@@ -188,6 +214,9 @@ class OrdenVentaController extends Controller
                 'fecha_entrega' => $validated['fecha_entrega'],
                 'subtotal' => $subtotal,
                 'itbms_total' => $itbms_total,
+                'descuento_tipo' => $validated['descuento_tipo'] ?? null,
+                'descuento_valor' => $validated['descuento_valor'] ?? 0,
+                'descuento_total' => $descuentoTotal,
                 'total' => $total,
                 'monto_abonado' => $request->input('monto_abonado', 0),
                 'metodo_pago_inicial' => $request->input('metodo_pago_inicial'),
@@ -212,6 +241,9 @@ class OrdenVentaController extends Controller
                 'fecha_vencimiento' => $orden->fecha_entrega,
                 'subtotal' => $orden->subtotal,
                 'itbms_total' => $orden->itbms_total,
+                'descuento_tipo' => $orden->descuento_tipo,
+                'descuento_valor' => $orden->descuento_valor ?? 0,
+                'descuento_total' => $orden->descuento_total ?? 0,
                 'total' => $orden->total,
                 'saldo_pendiente' => $orden->total - $orden->monto_abonado,
                 'payment_term_id' => $orden->cliente->payment_term_id ?? 1, // Default to first if none
@@ -220,7 +252,8 @@ class OrdenVentaController extends Controller
 
             foreach ($validated['items'] as $item) {
                 $lineaSubtotal = $item['cantidad'] * $item['precio_unitario'];
-                $lineaTotal = $lineaSubtotal + ($lineaSubtotal * ($item['tasa_itbms'] / 100));
+                $subtotalConDescuento = max(0, $lineaSubtotal - ($lineaSubtotal * $factorDescuento));
+                $lineaTotal = $subtotalConDescuento + ($subtotalConDescuento * ($item['tasa_itbms'] / 100));
                 
                 $orden->detalles()->create([
                     'item_id' => $item['item_id'],
@@ -228,6 +261,7 @@ class OrdenVentaController extends Controller
                     'precio_unitario' => $item['precio_unitario'],
                     'subtotal' => $lineaSubtotal,
                     'porcentaje_itbms' => $item['tasa_itbms'], 
+                    'porcentaje_descuento' => round($factorDescuento * 100, 2),
                     'total' => $lineaTotal,
                     'proceso_id' => $item['proceso_id'] ?? null,
                     'material_id' => $item['material_id'] ?? null,
@@ -258,6 +292,19 @@ class OrdenVentaController extends Controller
             Log::error('Error creando orden: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Error al crear la orden: ' . $e->getMessage());
         }
+    }
+
+    private function calcularDescuentoTotal(float $subtotal, ?string $tipo, float $valor): float
+    {
+        if ($subtotal <= 0 || !$tipo || $valor <= 0) {
+            return 0;
+        }
+
+        if ($tipo === 'porcentaje') {
+            return round($subtotal * ($valor / 100), 2);
+        }
+
+        return round(min($subtotal, $valor), 2);
     }
 
     public function update(Request $request, OrdenVenta $orden)
@@ -374,11 +421,12 @@ class OrdenVentaController extends Controller
             // O simplemente crear nuevas. El usuario usualmente quiere nuevas tareas.
             foreach ($orden->detalles as $detalle) {
                 if ($detalle->item->requires_recipe) {
-                    // Check if proccess_id is set
-                    if ($detalle->proceso_id) {
+                    $procesoId = $detalle->proceso_id ?: $detalle->item?->proceso_id;
+
+                    if ($procesoId) {
                         OrdenProduccion::create([
                             'orden_venta_id' => $orden->id,
-                            'proceso_id'     => $detalle->proceso_id,
+                            'proceso_id'     => $procesoId,
                             'item_id'        => $detalle->item_id,
                             'materia_prima_id' => $detalle->material_id,
                             'usa_material_completo' => (bool) $detalle->usa_material_completo,
@@ -417,12 +465,21 @@ class OrdenVentaController extends Controller
             // Si cambia a Confirmada, generar órdenes de producción (Mantener compatibilidad)
             if ($validated['estado'] === OrdenEstado::CONFIRMADA->value) {
                 if ($orden->ordenesProduccion()->count() === 0) {
+                    $itemsSinProceso = [];
                     foreach ($orden->detalles as $detalle) {
                         // Verificamos si requiere producción según el tipo de item o proceso
-                        if ($detalle->item->requires_recipe || $detalle->proceso_id) {
+                        $procesoId = $detalle->proceso_id ?: $detalle->item?->proceso_id;
+                        $requiereProduccion = $detalle->item->requires_recipe || !empty($procesoId);
+
+                        if ($detalle->item->requires_recipe && !$procesoId) {
+                            $itemsSinProceso[] = $detalle->item?->nombre ?? "Item #{$detalle->item_id}";
+                            continue;
+                        }
+
+                        if ($requiereProduccion && $procesoId) {
                             OrdenProduccion::create([
                                 'orden_venta_id' => $orden->id,
-                                'proceso_id'     => $detalle->proceso_id,
+                                'proceso_id'     => $procesoId,
                                 'item_id'        => $detalle->item_id,
                                 'materia_prima_id' => $detalle->material_id,
                                 'usa_material_completo' => (bool) $detalle->usa_material_completo,
@@ -437,6 +494,13 @@ class OrdenVentaController extends Controller
                                 'fecha_entrega_proyectada' => $orden->fecha_entrega
                             ]);
                         }
+                    }
+
+                    if (!empty($itemsSinProceso)) {
+                        throw new RuntimeException(
+                            'No se puede confirmar la orden porque estos productos no tienen maquina/proceso asignado: '
+                            . implode(', ', array_unique($itemsSinProceso))
+                        );
                     }
                 }
             }

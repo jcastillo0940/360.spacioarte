@@ -123,8 +123,16 @@ export default function Edit({ ordenId }) {
 
     const calcularConsumoMaterial = (item, material, maquina) => {
         const cantidad = toNumber(item.cantidad);
+        const familia = item?.familia_produccion || item?.familiaProduccion || null;
+        const requiereProduccion = !!(
+            item?.requires_recipe ||
+            familia?.requiere_receta ||
+            familia?.requiere_soporte_impresion ||
+            familia?.requiere_material_base ||
+            familia?.requiere_nesting
+        );
 
-        if (!item.requires_recipe || !material || !maquina || cantidad <= 0) {
+        if (!requiereProduccion || !material || !maquina || cantidad <= 0) {
             return {
                 capacidad_por_pliego: 0,
                 pliegos_necesarios: 0,
@@ -186,6 +194,123 @@ export default function Edit({ ordenId }) {
         );
     };
 
+    const getFamiliaProduccion = (item) => item?.familia_produccion || item?.familiaProduccion || null;
+
+    const itemRequiereProduccion = (item) => {
+        const familia = getFamiliaProduccion(item);
+        return !!(
+            item?.requires_recipe ||
+            familia?.requiere_receta ||
+            familia?.requiere_soporte_impresion ||
+            familia?.requiere_material_base ||
+            familia?.requiere_nesting
+        );
+    };
+
+    const sugerirConfiguracionProduccion = (producto, actual = {}) => {
+        const familia = getFamiliaProduccion(producto);
+        const procesos = producto?.procesos_compatibles || [];
+        const soportes = filtrarSoportesCompatibles(producto);
+        const procesoSugerido = actual.proceso_id || producto?.proceso_id || procesos[0]?.id || '';
+        const materialSugerido = actual.material_id || soportes[0]?.id || '';
+
+        let usaMaterialCompleto = !!actual.usa_material_completo;
+        if (familia?.tipo_consumo_material === 'unidad_completa') {
+            usaMaterialCompleto = true;
+        }
+
+        let tipoCalculo = actual.tipo_calculo_material || null;
+        if (!tipoCalculo) {
+            if (usaMaterialCompleto) {
+                tipoCalculo = 'unidad_completa';
+            } else if (familia?.tipo_consumo_material === 'rollo_lineal') {
+                tipoCalculo = 'rollo_lineal';
+            } else if (familia?.tipo_consumo_material === 'pliego_fijo') {
+                tipoCalculo = 'pliego';
+            }
+        }
+
+        const razonCalculo =
+            tipoCalculo === 'unidad_completa'
+                ? 'Cada unidad consume un soporte completo.'
+                : tipoCalculo === 'rollo_lineal'
+                    ? 'Se estima largo lineal sobre rollo.'
+                    : tipoCalculo === 'pliego'
+                        ? 'Se estima piezas por pliego fijo.'
+                        : 'Configura manualmente la forma de consumo.';
+
+        return {
+            familia_produccion: familia,
+            proceso_id: procesoSugerido,
+            material_id: materialSugerido,
+            usa_material_completo: usaMaterialCompleto,
+            tipo_calculo_material: tipoCalculo,
+            nesting_esperado: !!familia?.requiere_nesting,
+            sugerencia_proceso: procesos.find((p) => String(p.id) === String(procesoSugerido))?.nombre || null,
+            sugerencia_material: soportes.find((p) => String(p.id) === String(materialSugerido))?.nombre || null,
+            ayuda_familia: familia
+                ? `${familia.nombre}: ${razonCalculo}`
+                : 'Sin familia productiva asignada; configura proceso y soporte manualmente.',
+        };
+    };
+
+    const construirItemDesdeProducto = (producto, overrides = {}) => {
+        const soportesCompatibles = filtrarSoportesCompatibles(producto);
+        const base = {
+            item_id: producto.id,
+            nombre: producto.nombre,
+            cantidad: 1,
+            precio_unitario: producto.precio_venta || 0,
+            tasa_itbms: producto.tax?.tasa || 0,
+            requires_recipe: producto.requires_recipe || false,
+            tipo_impresion: producto.tipo_impresion || '',
+            familia_produccion: getFamiliaProduccion(producto),
+            procesos_compatibles: producto.procesos_compatibles || [],
+            papeles_compatibles: soportesCompatibles,
+            ancho_imprimible: producto.ancho_imprimible,
+            largo_imprimible: producto.largo_imprimible,
+            sangrado: producto.sangrado,
+            separacion_piezas: producto.separacion_piezas,
+            permite_rotacion: producto.permite_rotacion,
+            proceso_id: '',
+            material_id: '',
+            usa_material_completo: false,
+            tipo_calculo_material: null,
+            cantidad_material_calculada: null,
+            largo_material_calculado_cm: null,
+            unidad_consumo_material: null,
+            pliegos_necesarios: 0,
+            capacidad_por_pliego: 0,
+            total_piezas_calculadas: 0,
+            nesting_esperado: false,
+            sugerencia_proceso: null,
+            sugerencia_material: null,
+            ayuda_familia: null,
+        };
+
+        return {
+            ...base,
+            ...overrides,
+            ...sugerirConfiguracionProduccion(producto, { ...base, ...overrides }),
+        };
+    };
+
+    const actualizarItemProduccion = (id, cambios) => {
+        const nuevosItems = formData.items.map((item) => {
+            if (item.item_id !== id) {
+                return item;
+            }
+
+            const actualizado = { ...item, ...cambios };
+            return {
+                ...actualizado,
+                ...sugerirConfiguracionProduccion(actualizado, actualizado),
+            };
+        });
+
+        setFormData((prev) => ({ ...prev, items: nuevosItems }));
+    };
+
     useEffect(() => {
         console.log('Cargando datos para orden:', ordenId);
         
@@ -215,30 +340,23 @@ export default function Edit({ ordenId }) {
                     const producto = catalogoProductos.find(p => p.id === d.item_id) || d.item || {};
 
                     return {
-                        item_id: d.item_id,
-                        nombre: d.item?.nombre || producto?.nombre || 'Producto',
-                        cantidad: parseFloat(d.cantidad),
-                        precio_unitario: parseFloat(d.precio_unitario),
-                        tasa_itbms: parseFloat(d.porcentaje_itbms || producto?.tax?.tasa || 0),
-                        requires_recipe: producto?.requires_recipe || false,
-                        tipo_impresion: producto?.tipo_impresion || '',
-                        procesos_compatibles: producto?.procesos_compatibles || [],
-                        papeles_compatibles: filtrarSoportesCompatibles(producto),
-                        ancho_imprimible: producto?.ancho_imprimible,
-                        largo_imprimible: producto?.largo_imprimible,
-                        sangrado: producto?.sangrado,
-                        separacion_piezas: producto?.separacion_piezas,
-                        permite_rotacion: producto?.permite_rotacion,
-                        proceso_id: d.proceso_id || producto?.proceso_id || '',
-                        material_id: d.material_id || '',
-                        usa_material_completo: !!d.usa_material_completo,
-                        tipo_calculo_material: d.tipo_calculo_material || null,
-                        cantidad_material_calculada: d.cantidad_material_calculada,
-                        largo_material_calculado_cm: d.largo_material_calculado_cm,
-                        unidad_consumo_material: d.unidad_consumo_material,
-                        pliegos_necesarios: d.pliegos_necesarios || 0,
-                        capacidad_por_pliego: d.capacidad_por_pliego || 0,
-                        total_piezas_calculadas: d.total_piezas_calculadas || parseFloat(d.cantidad),
+                        ...construirItemDesdeProducto(producto, {
+                            item_id: d.item_id,
+                            nombre: d.item?.nombre || producto?.nombre || 'Producto',
+                            cantidad: parseFloat(d.cantidad),
+                            precio_unitario: parseFloat(d.precio_unitario),
+                            tasa_itbms: parseFloat(d.porcentaje_itbms || producto?.tax?.tasa || 0),
+                            proceso_id: d.proceso_id || producto?.proceso_id || '',
+                            material_id: d.material_id || '',
+                            usa_material_completo: !!d.usa_material_completo,
+                            tipo_calculo_material: d.tipo_calculo_material || null,
+                            cantidad_material_calculada: d.cantidad_material_calculada,
+                            largo_material_calculado_cm: d.largo_material_calculado_cm,
+                            unidad_consumo_material: d.unidad_consumo_material,
+                            pliegos_necesarios: d.pliegos_necesarios || 0,
+                            capacidad_por_pliego: d.capacidad_por_pliego || 0,
+                            total_piezas_calculadas: d.total_piezas_calculadas || parseFloat(d.cantidad),
+                        }),
                     };
                 }) || []
             };
@@ -278,32 +396,7 @@ export default function Edit({ ordenId }) {
             );
             setFormData({...formData, items: nuevosItems});
         } else {
-            const nuevoItem = {
-                item_id: producto.id,
-                nombre: producto.nombre,
-                cantidad: 1,
-                precio_unitario: producto.precio_venta || 0,
-                tasa_itbms: producto.tax?.tasa || 0,
-                requires_recipe: producto.requires_recipe || false,
-                tipo_impresion: producto.tipo_impresion || '',
-                procesos_compatibles: producto.procesos_compatibles || [],
-                papeles_compatibles: filtrarSoportesCompatibles(producto),
-                ancho_imprimible: producto.ancho_imprimible,
-                largo_imprimible: producto.largo_imprimible,
-                sangrado: producto.sangrado,
-                separacion_piezas: producto.separacion_piezas,
-                permite_rotacion: producto.permite_rotacion,
-                proceso_id: producto.procesos_compatibles?.length === 1 ? producto.procesos_compatibles[0].id : '',
-                material_id: filtrarSoportesCompatibles(producto).length === 1 ? filtrarSoportesCompatibles(producto)[0].id : '',
-                usa_material_completo: false,
-                tipo_calculo_material: null,
-                cantidad_material_calculada: null,
-                largo_material_calculado_cm: null,
-                unidad_consumo_material: null,
-                pliegos_necesarios: 0,
-                capacidad_por_pliego: 0,
-                total_piezas_calculadas: 0,
-            };
+            const nuevoItem = construirItemDesdeProducto(producto);
             setFormData({...formData, items: [...formData.items, nuevoItem]});
         }
         
@@ -335,7 +428,14 @@ export default function Edit({ ordenId }) {
             sub += lineaSubtotal;
             imp += lineaSubtotal * ((item.tasa_itbms ?? 7) / 100);
 
-            if (item.requires_recipe && item.proceso_id && item.material_id) {
+            if (itemRequiereProduccion(item)) {
+                item = {
+                    ...item,
+                    ...sugerirConfiguracionProduccion(item, item),
+                };
+            }
+
+            if (itemRequiereProduccion(item) && item.proceso_id && (item.material_id || item.usa_material_completo)) {
                 const papel = (item.papeles_compatibles || []).find(p => p.id == item.material_id);
                 const maquina = (item.procesos_compatibles || []).find(m => m.id == item.proceso_id);
 
@@ -539,7 +639,72 @@ export default function Edit({ ordenId }) {
                                             <tbody className="divide-y">
                                                 {formData.items.map(item => (
                                                     <tr key={item.item_id}>
-                                                        <td className="py-3 font-medium">{item.nombre}</td>
+                                                        <td className="py-3">
+                                                            <div className="font-medium">{item.nombre}</div>
+                                                            {itemRequiereProduccion(item) && (
+                                                                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                                                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                                                                        <div className="text-[9px] font-black uppercase tracking-widest text-blue-500">
+                                                                            {item.familia_produccion?.nombre || 'Sin familia'}
+                                                                        </div>
+                                                                        <div className="text-[11px] font-bold text-blue-900">
+                                                                            {item.ayuda_familia}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <div>
+                                                                            <label className="mb-1 block text-[9px] font-black uppercase text-slate-400">Máquina</label>
+                                                                            <select
+                                                                                className="w-full rounded border px-2 py-2 text-[10px]"
+                                                                                value={item.proceso_id}
+                                                                                onChange={(e) => actualizarItemProduccion(item.item_id, { proceso_id: e.target.value })}
+                                                                            >
+                                                                                <option value="">Seleccionar...</option>
+                                                                                {item.procesos_compatibles.map((proceso) => (
+                                                                                    <option key={proceso.id} value={proceso.id}>{proceso.nombre}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                            {item.sugerencia_proceso && (
+                                                                                <div className="mt-1 text-[9px] font-bold text-slate-500">
+                                                                                    Sugerido: {item.sugerencia_proceso}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="mb-1 block text-[9px] font-black uppercase text-slate-400">Soporte</label>
+                                                                            <select
+                                                                                className="w-full rounded border px-2 py-2 text-[10px]"
+                                                                                value={item.material_id}
+                                                                                onChange={(e) => actualizarItemProduccion(item.item_id, { material_id: e.target.value })}
+                                                                            >
+                                                                                <option value="">Seleccionar...</option>
+                                                                                {item.papeles_compatibles.map((material) => (
+                                                                                    <option key={material.id} value={material.id}>{material.nombre}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                            {item.sugerencia_material && (
+                                                                                <div className="mt-1 text-[9px] font-bold text-slate-500">
+                                                                                    Sugerido: {item.sugerencia_material}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={!!item.usa_material_completo}
+                                                                            onChange={(e) => actualizarItemProduccion(item.item_id, { usa_material_completo: e.target.checked, tipo_calculo_material: e.target.checked ? 'unidad_completa' : null })}
+                                                                        />
+                                                                        <span className="text-[10px] font-black uppercase text-slate-600">
+                                                                            Consumir material completo por unidad
+                                                                        </span>
+                                                                    </label>
+                                                                    <div className="text-[10px] text-slate-500">
+                                                                        Modo sugerido: {item.tipo_calculo_material || 'manual'}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </td>
                                                         <td className="py-3">
                                                             <input 
                                                                 type="number" 

@@ -19,6 +19,23 @@ const getArtworkSize = (orden) => {
     return `${formatNumber(ancho)} x ${formatNumber(largo)} cm`;
 };
 
+const getDisableReason = (nestingPlan, selectedMaterial, selectedOrders) => {
+    if (!selectedMaterial) return 'Selecciona primero el soporte.';
+    if (!selectedOrders.length) return 'Selecciona al menos un trabajo.';
+    if (nestingPlan.errors.length === 0) return '';
+
+    const invalidJobs = nestingPlan.diagnostics?.invalidJobs || [];
+    if (invalidJobs.length) {
+        return 'Hay trabajos sin medidas de arte o con datos incompletos para nesting.';
+    }
+
+    if (nestingPlan.diagnostics?.missingMaterialSize) {
+        return 'El soporte no tiene medidas configuradas.';
+    }
+
+    return nestingPlan.errors[0];
+};
+
 const PreviewCanvas = ({ preview }) => {
     if (!preview) return null;
 
@@ -111,6 +128,7 @@ export default function Index({ pendientes, pliegos, papeles }) {
     const incompatibleSelection = selectedMaterial
         ? selectedOrders.some((orden) => !isOrderCompatibleWithMaterial(orden, selectedMaterial))
         : false;
+    const disableReason = getDisableReason(nestingPlan, selectedMaterial, selectedOrders);
 
     const canCreatePliego = Boolean(
         data.item_id &&
@@ -290,6 +308,11 @@ export default function Index({ pendientes, pliegos, papeles }) {
                                                         <span className="rounded-full bg-slate-100 px-3 py-1">
                                                             Soporte pedido: {orden.materia_usada?.nombre || orden.materia_prima?.nombre || 'Por definir'}
                                                         </span>
+                                                        {(!orden?.producto?.ancho_imprimible || !orden?.producto?.largo_imprimible) && (
+                                                            <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
+                                                                Falta tamano de arte
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -381,6 +404,12 @@ export default function Index({ pendientes, pliegos, papeles }) {
                                 >
                                     Crear pliego
                                 </button>
+
+                                {!canCreatePliego && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+                                        {disableReason}
+                                    </div>
+                                )}
                             </form>
                         </section>
                         <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
@@ -484,6 +513,31 @@ export default function Index({ pendientes, pliegos, papeles }) {
                                     {nestingPlan.errors.map((error) => (
                                         <p key={error}>{error}</p>
                                     ))}
+
+                                    {nestingPlan.diagnostics?.missingMaterialSize && selectedMaterial && (
+                                        <p className="mt-3 text-xs font-bold">
+                                            Corrigelo en Inventarios &gt; Items &gt; editar "{selectedMaterial.nombre}" y completa ancho y largo del soporte.
+                                        </p>
+                                    )}
+
+                                    {(nestingPlan.diagnostics?.invalidJobs || []).length > 0 && (
+                                        <div className="mt-3 space-y-2 rounded-2xl bg-white/70 p-3 text-xs text-amber-900">
+                                            <p className="font-black uppercase tracking-[0.18em] text-amber-700">Trabajos pendientes de configurar</p>
+                                            {nestingPlan.diagnostics.invalidJobs.map((job) => (
+                                                <div key={job.id} className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200">
+                                                    <p className="font-black">{job.orderCode} - {job.label}</p>
+                                                    {job.missingArtworkSize ? (
+                                                        <p>Falta definir ancho y alto imprimible del arte en la ficha del producto.</p>
+                                                    ) : (
+                                                        <p>El arte no cabe en el soporte actual o le faltan datos para nesting.</p>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            <p className="font-bold">
+                                                Ruta de correccion: Inventarios &gt; Items &gt; editar producto &gt; Receta / BOM &gt; Ancho imprimible y Alto imprimible.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

@@ -24,10 +24,12 @@ class Item extends Model
         'stock_maximo',
         'tax_id',
         'categoria',
+        'category_id',
         'unidad_medida',
         'activo',
         'proceso_id',    // Requerido para vincular el producto a una máquina
         'item_base_id',   // Requerido para la relación Materia Prima -> Producto Terminado
+        'familia_produccion_id',
         'ancho_cm',
         'largo_cm',
         'es_rollo',
@@ -74,6 +76,11 @@ class Item extends Model
         return $this->belongsTo(Tax::class, 'tax_id');
     }
 
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ItemCategory::class, 'category_id');
+    }
+
     /**
      * Relación con el proceso de manufactura (Máquina por defecto)
      */
@@ -88,6 +95,11 @@ class Item extends Model
     public function productoBase(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'item_base_id');
+    }
+
+    public function familiaProduccion(): BelongsTo
+    {
+        return $this->belongsTo(FamiliaProduccion::class, 'familia_produccion_id');
     }
 
     /**
