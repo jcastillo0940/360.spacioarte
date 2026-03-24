@@ -18,7 +18,7 @@ use App\Http\Controllers\Finanzas\{EstadoCuentaController, FactoringController};
 use App\Http\Controllers\Inventario\{ItemController, ContactoController, SucursalController};
 
 // Ventas
-use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, CustomerPortalController, PosController};
+use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, CustomerPortalController, PosController, CotizacionController};
 
 // Compras
 use App\Http\Controllers\Compras\{OrdenCompraController, FacturaCompraController, EgresoController, RecepcionOrdenController, ConsolidarVentasController};
@@ -149,6 +149,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/contabilidad/bancos', [BankController::class, 'index']);
         Route::get('/contabilidad/libro-diario', [LibroDiarioController::class, 'index']);
         Route::get('/ventas/ordenes', [OrdenVentaController::class, 'index']);
+        Route::get('/ventas/cotizaciones', [CotizacionController::class, 'getData']);
         Route::get('/ventas/ordenes/datos', [OrdenVentaController::class, 'getDatos']);
         Route::get('/ventas/ordenes/{orden}', [OrdenVentaController::class, 'show']);
         Route::post('/ventas/enviar-chat', function (Illuminate\Http\Request $request) {
@@ -266,6 +267,13 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     
     // VENTAS
     Route::prefix('ventas')->group(function () {
+        Route::prefix('cotizaciones')->group(function () {
+            Route::get('/', [CotizacionController::class, 'index'])->name('cotizaciones.index');
+            Route::get('/crear', [CotizacionController::class, 'create'])->name('cotizaciones.create');
+            Route::post('/', [CotizacionController::class, 'store'])->name('cotizaciones.store');
+            Route::post('/{cotizacion}/convertir-orden', [CotizacionController::class, 'convertirAOrden'])->name('cotizaciones.convertir-orden');
+            Route::post('/{cotizacion}/convertir-factura', [CotizacionController::class, 'convertirAFactura'])->name('cotizaciones.convertir-factura');
+        });
         Route::prefix('ordenes')->group(function () {
             Route::get('/', [OrdenVentaController::class, 'index'])->name('ordenes.index');
             Route::get('/crear', function() { return Inertia::render('Ventas/Ordenes/Create'); })->name('ordenes.create');
@@ -346,10 +354,13 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::post('/', [EgresoController::class, 'store'])->name('pagos.store');
         });
         Route::prefix('recepciones')->name('recepciones.')->group(function () {
-            Route::get('/', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'index'])->name('index');
-            Route::post('/', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'store'])->name('store');
-            Route::post('/desde-factura/{facturaId}', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'crearDesdeFactura'])->name('crear_desde_factura');
+            Route::get('/', [RecepcionOrdenController::class, 'index'])->name('index');
+            Route::get('/historial', [RecepcionOrdenController::class, 'historial'])->name('historial');
             Route::get('/recibir/{id}', [RecepcionOrdenController::class, 'recibir'])->name('recibir');
+            Route::post('/', [RecepcionOrdenController::class, 'store'])->name('store');
+            Route::post('/buscar-codigo', [RecepcionOrdenController::class, 'buscarPorCodigo'])->name('buscar-codigo');
+            Route::get('/{id}', [RecepcionOrdenController::class, 'show'])->name('show');
+            Route::post('/desde-factura/{facturaId}', [\App\Http\Controllers\Compras\CompraRecepcionController::class, 'crearDesdeFactura'])->name('crear_desde_factura');
         });
     });
     

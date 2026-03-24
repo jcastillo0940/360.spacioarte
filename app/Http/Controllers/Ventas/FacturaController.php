@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FacturaVenta;
 use App\Models\FacturaVentaDetalle;
 use App\Models\OrdenVenta;
+use App\Models\PaymentTerm;
 use App\Models\TenantConfig;
 use App\Services\AccountingService;
 use Illuminate\Http\Request;
@@ -56,7 +57,24 @@ class FacturaController extends Controller
             return back()->withErrors(['error' => 'Esta orden ya ha sido facturada previamente.']);
         }
 
-        return DB::transaction(function () use ($orden) {
+        $orden->loadMissing(['cliente.payment_term', 'detalles.item']);
+
+        $paymentTermId = $orden->cliente?->payment_term_id
+            ?? PaymentTerm::query()->orderBy('id')->value('id');
+
+        if (!$paymentTermId) {
+            return back()->withErrors([
+                'error' => 'No existe un termino de pago configurado. Cree uno o asigne uno al cliente antes de facturar.',
+            ]);
+        }
+
+        $paymentTerm = $orden->cliente?->payment_term && (int) $orden->cliente->payment_term->id === (int) $paymentTermId
+            ? $orden->cliente->payment_term
+            : PaymentTerm::query()->find($paymentTermId);
+
+        $diasVencimiento = $paymentTerm?->dias_vencimiento ?? 30;
+
+        return DB::transaction(function () use ($orden, $diasVencimiento, $paymentTermId) {
             $config = TenantConfig::first();
             
             // 1. Crear la cabecera de la Factura
@@ -66,8 +84,8 @@ class FacturaController extends Controller
                 'vendedor_id'       => $orden->vendedor_id,
                 'orden_venta_id'    => $orden->id,
                 'fecha_emision'     => now(),
-                'fecha_vencimiento' => now()->addDays($orden->cliente->paymentTerm->dias_vencimiento ?? 30),
-                'payment_term_id'   => $orden->cliente->payment_term_id ?? null,
+                'fecha_vencimiento' => now()->addDays($diasVencimiento),
+                'payment_term_id'   => $paymentTermId,
                 'subtotal'          => $orden->subtotal,
                 'itbms_total'       => $orden->itbms_total,
                 'total'             => $orden->total,

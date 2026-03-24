@@ -100,7 +100,7 @@ class OrderService
             // Consumo de Materiales
             if ($nuevoEstado === OrdenEstado::PRODUCCION->value) {
                 // Asumimos que item_id apunta al producto/material a fabricar/usar
-                $item = $ordenProduccion->materiaPrima; // Relación definida en el modelo
+                $item = $ordenProduccion->producto ?? $ordenProduccion->materiaPrima; // item_id = producto final
                 
                 if ($item) {
                      $validacion = $this->inventoryService->validarStockReceta($item, $ordenProduccion->cantidad);

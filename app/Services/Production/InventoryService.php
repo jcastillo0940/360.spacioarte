@@ -3,11 +3,16 @@
 namespace App\Services\Production;
 
 use App\Models\Item;
+use App\Services\InventoryMovementService;
 use Illuminate\Support\Facades\DB;
 use Exception;
 
 class InventoryService
 {
+    public function __construct(protected InventoryMovementService $movementService)
+    {
+    }
+
     /**
      * Valida si existe suficiente stock de insumos para fabricar una cantidad dada de un producto.
      * 
@@ -75,7 +80,23 @@ class InventoryService
                 if ($producto->stock_actual < $cantidadSolicitada) {
                     throw new Exception("Stock insuficiente de {$producto->nombre}");
                 }
-                $producto->decrement('stock_actual', $cantidadSolicitada);
+                $stockAnterior = floatval($producto->stock_actual);
+                $costoAnterior = floatval($producto->costo_promedio);
+                $stockPosterior = $stockAnterior - $cantidadSolicitada;
+                $producto->update(['stock_actual' => $stockPosterior]);
+                $this->movementService->record(
+                    item: $producto,
+                    naturaleza: 'Salida',
+                    cantidad: $cantidadSolicitada,
+                    costoUnitario: $costoAnterior,
+                    stockAnterior: $stockAnterior,
+                    stockPosterior: $stockPosterior,
+                    costoAnterior: $costoAnterior,
+                    costoPosterior: $costoAnterior,
+                    origen: 'Produccion Directa',
+                    referencia: $producto->codigo,
+                    observacion: 'Consumo directo de inventario sin receta'
+                );
             }
             return;
         }
@@ -88,7 +109,29 @@ class InventoryService
                 throw new Exception("Stock insuficiente de insumo: {$insumo->nombre}. Requerido: {$cantidadRequerida}, Disponible: {$insumo->stock_actual}");
             }
 
-            $insumo->decrement('stock_actual', $cantidadRequerida);
+            $stockAnterior = floatval($insumo->stock_actual);
+            $costoAnterior = floatval($insumo->costo_promedio);
+            $stockPosterior = $stockAnterior - $cantidadRequerida;
+            $insumo->update(['stock_actual' => $stockPosterior]);
+            $this->movementService->record(
+                item: $insumo,
+                naturaleza: 'Salida',
+                cantidad: $cantidadRequerida,
+                costoUnitario: $costoAnterior,
+                stockAnterior: $stockAnterior,
+                stockPosterior: $stockPosterior,
+                costoAnterior: $costoAnterior,
+                costoPosterior: $costoAnterior,
+                origen: 'Consumo Receta',
+                referencia: $producto->codigo,
+                observacion: "Consumo por receta para {$producto->nombre}",
+                meta: [
+                    'producto_id' => $producto->id,
+                    'producto_codigo' => $producto->codigo,
+                    'cantidad_solicitada' => $cantidadSolicitada,
+                    'unidad' => $receta->unidad,
+                ]
+            );
         }
     }
 }

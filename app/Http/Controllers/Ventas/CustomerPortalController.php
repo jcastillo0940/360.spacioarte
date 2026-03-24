@@ -91,20 +91,7 @@ class CustomerPortalController extends Controller
             
             broadcast(new ChatMessageEvent($msgObj, $token));
 
-            foreach ($orden->detalles as $detalle) {
-                $item = $detalle->item;
-                
-                if ($item && $item->proceso_id) {
-                    OrdenProduccion::create([
-                        'orden_venta_id' => $orden->id,
-                        'proceso_id'     => $item->proceso_id,
-                        'item_id'        => $item->item_base_id ?? $item->id,
-                        'cantidad'       => $detalle->cantidad,
-                        'estado'         => OrdenEstado::PENDIENTE->value, // Pendiente de Nesting/Pliego
-                        'fecha_entrega_proyectada' => $this->calcularFechaProyectada($item->proceso_id, $detalle->cantidad)
-                    ]);
-                }
-            }
+            $this->crearOrdenesProduccionDesdeDetalles($orden);
 
             DB::commit();
             return back()->with('success', '¡Gracias! Tu diseño ha sido aprobado y tus productos ya están en cola de producción.');
@@ -221,8 +208,37 @@ class CustomerPortalController extends Controller
     }
 
     /**
-     * Cliente aprueba cobro por revisiones adicionales de diseño
+     * Genera tareas de producción respetando producto, papel y máquina elegidos.
      */
+    private function crearOrdenesProduccionDesdeDetalles(OrdenVenta $orden): void
+    {
+        foreach ($orden->detalles as $detalle) {
+            $item = $detalle->item;
+            $procesoId = $detalle->proceso_id ?: $item?->proceso_id;
+
+            if (!$item || !$procesoId) {
+                continue;
+            }
+
+            OrdenProduccion::create([
+                'orden_venta_id' => $orden->id,
+                'proceso_id' => $procesoId,
+                'item_id' => $detalle->item_id,
+                'materia_prima_id' => $detalle->material_id,
+                'usa_material_completo' => (bool) $detalle->usa_material_completo,
+                'tipo_calculo_material' => $detalle->tipo_calculo_material,
+                'cantidad_material_calculada' => $detalle->cantidad_material_calculada,
+                'largo_material_calculado_cm' => $detalle->largo_material_calculado_cm,
+                'unidad_consumo_material' => $detalle->unidad_consumo_material,
+                'pliegos' => $detalle->pliegos_necesarios,
+                'capacidad_nesting' => $detalle->capacidad_por_pliego,
+                'cantidad' => $detalle->cantidad,
+                'estado' => OrdenEstado::PENDIENTE->value,
+                'fecha_entrega_proyectada' => $this->calcularFechaProyectada($procesoId, $detalle->cantidad)
+            ]);
+        }
+    }
+
     public function approveBilling($token)
     {
         $orden = OrdenVenta::where('tracking_token', $token)->firstOrFail();
@@ -288,19 +304,7 @@ class CustomerPortalController extends Controller
             broadcast(new ChatMessageEvent($msgObj, $token));
 
             // Generar tareas de producción
-            foreach ($orden->detalles as $detalle) {
-                $item = $detalle->item;
-                if ($item && $item->proceso_id) {
-                    OrdenProduccion::create([
-                        'orden_venta_id' => $orden->id,
-                        'proceso_id'     => $item->proceso_id,
-                        'item_id'        => $item->item_base_id ?? $item->id,
-                        'cantidad'       => $detalle->cantidad,
-                        'estado'         => OrdenEstado::PENDIENTE->value,
-                        'fecha_entrega_proyectada' => $this->calcularFechaProyectada($item->proceso_id, $detalle->cantidad)
-                    ]);
-                }
-            }
+            $this->crearOrdenesProduccionDesdeDetalles($orden);
 
             DB::commit();
             return back()->with('success', '¡Diseño recibido! Tu pedido ha sido enviado a producción bajo tu archivo suministrado.');

@@ -47,6 +47,18 @@ export default function Index() {
         }
     };
 
+    const canReceiveFromFactura = (factura) => {
+        if (factura.estado !== 'Abierta') {
+            return false;
+        }
+
+        if (!factura.orden_original) {
+            return true;
+        }
+
+        return !['Recibida Total', 'Recibida Parcial'].includes(factura.orden_original.estado);
+    };
+
     const getStatusStyle = (status) => {
         switch (status) {
             case 'Abierta': return 'bg-orange-100 text-orange-600 border-orange-200';
@@ -193,7 +205,7 @@ export default function Index() {
                                                     <Printer size={20} />
                                                 </a>
 
-                                                {(factura.estado === 'Abierta') && (
+                                                {(factura.estado === 'Abierta' && parseFloat(factura.saldo_pendiente) > 0) && (
                                                     <Link
                                                         href={route('compras.pagos.create', { factura: factura.id })}
                                                         className="p-3 bg-white text-slate-400 rounded-xl border border-slate-200 hover:text-green-600 hover:border-green-600 transition"
@@ -205,7 +217,9 @@ export default function Index() {
 
                                                 <button
                                                     onClick={() => handleRecibir(factura.id)}
-                                                    className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-600 shadow-lg transition flex items-center gap-2"
+                                                    disabled={!canReceiveFromFactura(factura)}
+                                                    className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-600 shadow-lg transition flex items-center gap-2 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
+                                                    title={!canReceiveFromFactura(factura) ? 'Esta orden ya fue recibida por bodega o la factura no está abierta.' : 'Generar ingreso de mercancía'}
                                                 >
                                                     <Package size={16} /> Recibir Mercancía
                                                 </button>

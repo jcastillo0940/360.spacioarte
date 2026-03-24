@@ -53,6 +53,12 @@ class EgresoController extends Controller
                 ]);
             }
 
+            if ($validated['monto_pagado'] > $banco->saldo_actual) {
+                return back()->withErrors([
+                    'monto_pagado' => "El monto excede el saldo disponible en el banco ($" . $banco->saldo_actual . ")"
+                ]);
+            }
+
             // 1. Crear el Comprobante de Egreso
             $egreso = Egreso::create([
                 'numero_egreso'     => 'CE-' . str_pad(time(), 8, '0', STR_PAD_LEFT),
@@ -64,7 +70,8 @@ class EgresoController extends Controller
                 'referencia'        => $validated['referencia'],
             ]);
 
-            // 2. Afectar el Banco (Transacción + Reducción de Saldo Actual)
+            // 2. Registrar el movimiento bancario.
+            // BankTransaction ya ajusta saldo_actual automáticamente.
             BankTransaction::create([
                 'bank_account_id' => $validated['bank_account_id'],
                 'tipo'            => 'Egreso',
@@ -74,7 +81,6 @@ class EgresoController extends Controller
                 'referencia'      => $validated['referencia'],
             ]);
 
-            $banco->decrement('saldo_actual', $validated['monto_pagado']);
 
             // 3. Generar Asiento Contable Automático
             // Débito: Cuentas por Pagar (Disminuye Pasivo)
@@ -98,11 +104,11 @@ class EgresoController extends Controller
             );
 
             // 4. Actualizar saldo de la factura de compra
-            $factura->decrement('saldo_pendiente', $validated['monto_pagado']);
-            
-            if ($factura->saldo_pendiente <= 0) {
-                $factura->update(['estado' => 'Pagada']);
-            }
+            $nuevoSaldo = max(round((float) $factura->saldo_pendiente - (float) $validated['monto_pagado'], 2), 0);
+            $factura->update([
+                'saldo_pendiente' => $nuevoSaldo,
+                'estado' => $nuevoSaldo <= 0 ? 'Pagada' : 'Abierta',
+            ]);
 
             return redirect()->back()->with('success', 'Egreso registrado, saldos actualizados y asiento contable generado.');
         });
@@ -114,8 +120,11 @@ class EgresoController extends Controller
         'facturas' => FacturaCompra::with('proveedor')
             ->where('saldo_pendiente', '>', 0)
             ->where('estado', '!=', 'Anulada')
+            ->orderBy('fecha_vencimiento')
             ->get(),
-        'bancos' => BankAccount::all()
+        'bancos' => BankAccount::where('activo', true)
+            ->orderBy('nombre_banco')
+            ->get(['id', 'nombre_banco', 'numero_cuenta', 'saldo_actual'])
     ]);
 }
 }

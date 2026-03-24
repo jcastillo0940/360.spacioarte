@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers\Produccion;
 
+use App\Enums\OrdenEstado;
 use App\Http\Controllers\Controller;
-use App\Models\PliegoImpresion;
-use App\Models\OrdenProduccion;
 use App\Models\Item;
+use App\Models\OrdenProduccion;
+use App\Models\PliegoImpresion;
+use App\Services\InventoryMovementService;
+use App\Services\Production\OrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-
-use App\Enums\OrdenEstado;
-use App\Services\Production\OrderService;
 
 class PliegoController extends Controller
 {
@@ -23,115 +23,167 @@ class PliegoController extends Controller
     }
 
     /**
-     * Listado de pliegos y órdenes pendientes de agrupar.
+     * Listado de pliegos y ordenes pendientes de agrupar.
      */
     public function index()
     {
-        // Órdenes que están aprobadas por el cliente pero aún no tienen pliego
-        // Usamos el estado unificado para pendientes de producción/nesting
-        $pendientes = OrdenProduccion::with(['venta.cliente', 'materiaPrima'])
+        $pendientes = OrdenProduccion::with(['venta.cliente', 'producto', 'materiaUsada', 'maquina'])
             ->whereIn('estado', [OrdenEstado::PENDIENTE->value, OrdenEstado::NESTING->value])
             ->get();
 
-        $pliegos = PliegoImpresion::with(['materiaPrima', 'items.venta'])
+        $pliegos = PliegoImpresion::with(['materiaPrima', 'items.venta', 'items.producto'])
             ->orderBy('id', 'desc')
             ->take(20)
             ->get();
 
-        $papeles = Item::where('es_para_nesting', true)
-            ->where('activo', true)
-            ->select('id', 'nombre', 'stock_actual')
+        $papeles = Item::materialesSoporte()
+            ->select('id', 'nombre', 'stock_actual', 'unidad_medida', 'ancho_cm', 'largo_cm', 'es_rollo', 'margen_seguridad_cm')
             ->get();
 
         return Inertia::render('Produccion/Pliegos/Index', [
             'pendientes' => $pendientes,
-            'pliegos'    => $pliegos,
-            'papeles'    => $papeles
+            'pliegos' => $pliegos,
+            'papeles' => $papeles,
         ]);
     }
 
     /**
-     * Crear un nuevo pliego agrupando órdenes (Nesting)
+     * Crear un nuevo pliego agrupando ordenes.
      */
     public function store(Request $request)
     {
         $request->validate([
-            'item_id' => 'required|exists:items,id', // El tipo de papel usado
+            'item_id' => 'required|exists:items,id',
             'ordenes' => 'required|array|min:1',
         ]);
 
         DB::beginTransaction();
+
         try {
-            // 1. Crear el contenedor Pliego
             $pliego = PliegoImpresion::create([
-                'item_id'     => $request->item_id,
-                'estado'      => OrdenEstado::PENDIENTE->value, // El pliego nace pendiente de imprimir
-                'operario_id' => auth()->id()
+                'item_id' => $request->item_id,
+                'estado' => OrdenEstado::PENDIENTE->value,
+                'operario_id' => auth()->id(),
             ]);
 
-            // 2. Vincular las órdenes al pliego
             foreach ($request->ordenes as $ordenId) {
-                $orden = OrdenProduccion::findOrFail($ordenId);
-                
+                $orden = OrdenProduccion::with(['producto.papelesCompatibles', 'maquina'])->findOrFail($ordenId);
+
+                if (!$orden->maquina || !$orden->maquina->permite_nesting) {
+                    throw new \Exception("La orden #{$orden->id} esta asignada a un proceso que no permite nesting.");
+                }
+
+                if ($orden->materia_prima_id && (int) $orden->materia_prima_id !== (int) $request->item_id) {
+                    throw new \Exception("La orden #{$orden->id} requiere un papel o soporte distinto al seleccionado.");
+                }
+
+                $papelesCompatibles = $orden->producto?->papelesCompatibles ?? collect();
+                if ($papelesCompatibles->isNotEmpty() && !$papelesCompatibles->contains('id', (int) $request->item_id)) {
+                    throw new \Exception("El papel seleccionado no es compatible con {$orden->producto?->nombre}.");
+                }
+
                 $pliego->items()->attach($orden->id, [
                     'cantidad_asignada' => $orden->cantidad,
                     'created_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
-                // 3. Cambiar estado de la orden a "Pre-Prensa" (Nesting)
-                // Usamos update directo porque aquí no hay consumo de inventario aún
-                $orden->update(['estado' => OrdenEstado::NESTING->value]);
+                $orden->update([
+                    'estado' => OrdenEstado::NESTING->value,
+                    'materia_prima_id' => $orden->materia_prima_id ?: $request->item_id,
+                ]);
             }
 
             DB::commit();
+
             return back()->with('success', 'Pliego armado correctamente.');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return back()->with('error', 'Error al armar pliego: ' . $e->getMessage());
         }
     }
 
     /**
-     * Marcar pliego como IMPRESO: Esto distribuye las tareas a las máquinas finales
+     * Marcar pliego como impreso y consumir el material.
      */
     public function imprimir(Request $request, $id)
     {
         $request->validate([
             'material_id' => 'required|exists:items,id',
-            'cantidad_utilizada' => 'required|numeric|min:0.01'
+            'cantidad_utilizada' => 'nullable|numeric|min:0.01',
         ]);
 
         $pliego = PliegoImpresion::with('items.venta')->findOrFail($id);
         $material = Item::findOrFail($request->material_id);
 
         DB::beginTransaction();
+
         try {
-            // Validar stock disponible
-            if ($material->stock_actual < $request->cantidad_utilizada) {
-                throw new \Exception("Stock insuficiente de {$material->nombre}. Disponible: {$material->stock_actual}, Requerido: {$request->cantidad_utilizada}");
+            if ((int) $pliego->item_id !== (int) $material->id) {
+                throw new \Exception('El material utilizado debe coincidir con el papel o soporte definido para el pliego.');
             }
 
-            // Descontar inventario
-            $material->decrement('stock_actual', $request->cantidad_utilizada);
+            $cantidadCalculada = round((float) $pliego->items->sum(function ($orden) {
+                if (!empty($orden->cantidad_material_calculada)) {
+                    return (float) $orden->cantidad_material_calculada;
+                }
 
-            // Actualizar pliego
+                return (float) ($orden->pliegos ?? 0);
+            }), 4);
+
+            $cantidadUtilizada = (float) ($request->cantidad_utilizada ?: $cantidadCalculada);
+
+            if ($cantidadUtilizada <= 0) {
+                throw new \Exception('No fue posible calcular la cantidad de material a consumir para este pliego.');
+            }
+
+            if ($material->stock_actual < $cantidadUtilizada) {
+                throw new \Exception("Stock insuficiente de {$material->nombre}. Disponible: {$material->stock_actual}, Requerido: {$cantidadUtilizada}");
+            }
+
+            $stockAnterior = (float) $material->stock_actual;
+            $costoAnterior = (float) $material->costo_promedio;
+            $stockPosterior = $stockAnterior - $cantidadUtilizada;
+
+            $material->update([
+                'stock_actual' => $stockPosterior,
+            ]);
+
+            app(InventoryMovementService::class)->record(
+                item: $material,
+                naturaleza: 'Salida',
+                cantidad: $cantidadUtilizada,
+                costoUnitario: $costoAnterior,
+                stockAnterior: $stockAnterior,
+                stockPosterior: $stockPosterior,
+                costoAnterior: $costoAnterior,
+                costoPosterior: $costoAnterior,
+                origen: 'Consumo Pliego',
+                origenId: $pliego->id,
+                referencia: "PLG-{$pliego->id}",
+                observacion: 'Consumo de material en proceso de nesting o impresion',
+                meta: [
+                    'material_utilizado_id' => $material->id,
+                    'cantidad_ordenes' => $pliego->items->count(),
+                    'cantidad_calculada' => $cantidadCalculada,
+                ]
+            );
+
             $pliego->update([
                 'estado' => 'Impreso',
                 'material_utilizado_id' => $material->id,
-                'cantidad_material' => $request->cantidad_utilizada
+                'cantidad_material' => $cantidadUtilizada,
             ]);
 
-            // Al marcar el pliego como impreso, todas sus órdenes pasan a PRODUCCION
             foreach ($pliego->items as $orden) {
                 $this->orderService->avanzarOrdenProduccion($orden, OrdenEstado::PRODUCCION->value);
             }
 
-            // Módulo 6.4: Asiento Contable Automático (Reconocimiento del Costo)
             $config = \App\Models\TenantConfig::getSettings();
             if ($config->cta_costo_produccion_id && $config->cta_inventario_id) {
-                $valorCosto = $request->cantidad_utilizada * $material->costo_promedio;
-                
+                $valorCosto = $cantidadUtilizada * $material->costo_promedio;
+
                 \App\Services\AccountingService::registrarAsiento(
                     now(),
                     "CONS-PLIEGO-{$pliego->id}",
@@ -140,21 +192,23 @@ class PliegoController extends Controller
                         [
                             'account_id' => $config->cta_costo_produccion_id,
                             'debito' => $valorCosto,
-                            'credito' => 0
+                            'credito' => 0,
                         ],
                         [
                             'account_id' => $config->cta_inventario_id,
                             'debito' => 0,
-                            'credito' => $valorCosto
-                        ]
+                            'credito' => $valorCosto,
+                        ],
                     ]
                 );
             }
 
             DB::commit();
-            return back()->with('success', "Pliego impreso. Se descontaron {$request->cantidad_utilizada} unidades de {$material->nombre} y se registró el costo.");
+
+            return back()->with('success', "Pliego impreso. Se descontaron {$cantidadUtilizada} unidades de {$material->nombre} y se registro el costo.");
         } catch (\Exception $e) {
             DB::rollBack();
+
             return back()->with('error', 'Error al imprimir: ' . $e->getMessage());
         }
     }

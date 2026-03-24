@@ -46,4 +46,9 @@ class FacturaCompra extends Model
     {
         return $this->hasMany(FacturaCompraDetalle::class, 'factura_compra_id');
     }
+
+    public function egresos(): HasMany
+    {
+        return $this->hasMany(Egreso::class, 'factura_compra_id');
+    }
 }

@@ -3,12 +3,12 @@ import { Head, Link } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
     TrendingUp,
-    Admin,
     Landmark,
     PieChart,
     Download,
     ChevronRight,
-    Search
+    Search,
+    ShieldCheck
 } from 'lucide-react';
 
 const MasterViewCard = ({ title, description, href, icon: Icon, colorClass }) => (
@@ -54,7 +54,7 @@ export default function Index() {
                     <MasterViewCard
                         title="Administrativos"
                         description="Cartera de cobro (CxC), deudas (CxP), inventario y compras."
-                        icon={Search}
+                        icon={ShieldCheck}
                         href={route('reportes.admin.index')}
                         colorClass="bg-slate-900"
                     />

@@ -7,6 +7,7 @@ use App\Models\OrdenCompra;
 use App\Models\RecepcionOrden;
 use App\Models\RecepcionOrdenDetalle;
 use App\Models\Item;
+use App\Services\InventoryMovementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -203,7 +204,9 @@ class RecepcionOrdenController extends Controller
                 // Actualizar inventario SOLO para items inventariables
                 $item = Item::lockForUpdate()->find($itemData['item_id']);
                 if ($item && ($item->tipo === 'Inventariable' || $item->tipo === 'Consumible' || $item->tipo === 'Materia Prima')) {
-                    $valorActual = floatval($item->stock_actual) * floatval($item->costo_promedio);
+                    $stockAnterior = floatval($item->stock_actual);
+                    $costoAnterior = floatval($item->costo_promedio);
+                    $valorActual = $stockAnterior * $costoAnterior;
                     
                     // El costo unitario en la OC es por la UNIDAD DE COMPRA (box, pack, etc.)
                     // Lo que entra al inventario es en UNIDAD BASE.
@@ -220,6 +223,28 @@ class RecepcionOrdenController extends Controller
                         'stock_actual' => $nuevoStockTotal,
                         'costo_promedio' => round($nuevoCostoPromedio, 2)
                     ]);
+
+                    app(InventoryMovementService::class)->record(
+                        item: $item,
+                        naturaleza: 'Entrada',
+                        cantidad: $cantRecibidaBase,
+                        costoUnitario: $costoUnitarioBase,
+                        stockAnterior: $stockAnterior,
+                        stockPosterior: $nuevoStockTotal,
+                        costoAnterior: $costoAnterior,
+                        costoPosterior: round($nuevoCostoPromedio, 2),
+                        origen: 'Recepcion OC',
+                        origenId: $recepcion->id,
+                        referencia: $recepcion->numero_recepcion,
+                        observacion: 'Recepcion de compra desde orden',
+                        meta: [
+                            'orden_compra_id' => $orden->id,
+                            'item_unit_id' => $detalleOrden->item_unit_id,
+                            'cantidad_um_compra' => floatval($itemData['cantidad_recibida']),
+                            'factor_conversion' => $factor,
+                        ],
+                        fecha: $recepcion->fecha_recepcion
+                    );
                 }
             }
 

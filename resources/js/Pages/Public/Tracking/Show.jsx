@@ -190,33 +190,33 @@ export default function Show({ orden, max_intentos }) {
     useEffect(() => { scrollToBottom(); }, [mensajes]);
 
     useEffect(() => {
-        if (!orden?.tracking_token) return;
-        if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
-
+        if (!import.meta.env.VITE_PUSHER_APP_KEY) return;
+        
         const pusher = new Pusher(import.meta.env.VITE_PUSHER_APP_KEY, {
             cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
-            forceTLS: true, enabledTransports: ['ws', 'wss'],
         });
 
+        // Chat listener
         const chatChannel = pusher.subscribe(`chat.${orden.tracking_token}`);
         const ordersChannel = pusher.subscribe('orders');
 
-        chatChannel.bind('nuevo-mensaje', (data) => {
-            const m = data.mensaje || data;
-            if (m.emisor === 'staff' && 'Notification' in window && Notification.permission === 'granted') {
-                new Notification('Nuevo mensaje de SpacioArte', { body: m.texto, icon: '/logo.png' });
-            }
-            setMensajes(prev => {
-                const existe = prev.some(p =>
-                    (p.id && p.id === m.id) ||
-                    (p.texto === m.texto && p.created_at === m.created_at && p.emisor === m.emisor)
-                );
-                return existe ? prev : [...prev, m];
+        chatChannel.bind('chat.message', (data) => {
+            const finalMessage = data.message || data;
+            setMensajes(prev => { // Changed setChatMessages to setMensajes to match existing state
+                const messageId = finalMessage.id || (finalMessage.created_at + finalMessage.sender + finalMessage.text);
+                if (prev.some(m => (m.id || (m.created_at + m.sender + m.text)) === messageId)) {
+                    return prev;
+                }
+                return [...prev, finalMessage];
             });
         });
 
-        ordersChannel.bind('OrderStateChanged', (data) => {
-            if (data.id === orden.id) router.reload({ only: ['orden'] });
+        // Diseno state listener
+        ordersChannel.bind('OrderStateUpdated', (data) => {
+            if (data.tracking_token === orden.tracking_token) {
+                // Update local status safely...
+                window.location.reload(); 
+            }
         });
 
         return () => {
@@ -224,7 +224,7 @@ export default function Show({ orden, max_intentos }) {
             pusher.unsubscribe('orders');
             pusher.disconnect();
         };
-    }, [orden?.tracking_token, orden?.id]);
+    }, [orden.tracking_token]);
 
     const submitMensaje = async (e) => {
         e.preventDefault();

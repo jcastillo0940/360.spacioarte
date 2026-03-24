@@ -13,8 +13,13 @@ class OrdenProduccion extends Model
     protected $fillable = [
         'orden_venta_id',
         'proceso_id',
-        'item_id', // Materia prima base (ej. Taza Blanca)
-        'materia_prima_id', // Papel/Soporte específico de la receta
+        'item_id',
+        'materia_prima_id',
+        'usa_material_completo',
+        'tipo_calculo_material',
+        'cantidad_material_calculada',
+        'largo_material_calculado_cm',
+        'unidad_consumo_material',
         'pliegos',
         'capacidad_nesting',
         'cantidad',
@@ -28,6 +33,11 @@ class OrdenProduccion extends Model
         return $this->belongsTo(Item::class, 'materia_prima_id');
     }
 
+    public function producto(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+
     public function venta(): BelongsTo
     {
         return $this->belongsTo(OrdenVenta::class, 'orden_venta_id');
@@ -38,12 +48,12 @@ class OrdenProduccion extends Model
         return $this->belongsTo(Proceso::class, 'proceso_id');
     }
 
+    // Compatibilidad con código existente.
     public function materiaPrima(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'item_id');
     }
 
-    // Un trabajo puede pertenecer a un pliego de impresión (Nesting)
     public function pliegos(): BelongsToMany
     {
         return $this->belongsToMany(PliegoImpresion::class, 'pliego_orden_produccion', 'orden_produccion_id', 'pliego_id');

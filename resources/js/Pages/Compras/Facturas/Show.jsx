@@ -90,7 +90,7 @@ export default function Show({ facturaId }) {
                             </svg>
                             Descargar PDF
                         </a>
-                        {factura.estado === 'Abierta' && (
+                        {factura.estado === 'Abierta' && parseFloat(factura.saldo_pendiente) > 0 && (
                             <Link
                                 href={`/compras/pagos/crear?factura=${factura.id}`}
                                 className="px-6 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition flex items-center gap-2"
@@ -223,6 +223,44 @@ export default function Show({ facturaId }) {
                                     </td>
                                 </tr>
                             </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="p-6 bg-slate-50 border-b border-slate-200">
+                        <h2 className="text-lg font-bold text-slate-900">Historial de Pagos</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-slate-100">
+                                <tr>
+                                    <th className="px-6 py-3 text-left text-xs font-bold uppercase text-slate-600">Comprobante</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold uppercase text-slate-600">Fecha</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold uppercase text-slate-600">Banco</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold uppercase text-slate-600">Metodo</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold uppercase text-slate-600">Referencia</th>
+                                    <th className="px-6 py-3 text-right text-xs font-bold uppercase text-slate-600">Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {factura.egresos?.length > 0 ? factura.egresos.map((egreso) => (
+                                    <tr key={egreso.id} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 text-sm font-black text-blue-600">{egreso.numero_egreso}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-600">{new Date(egreso.fecha_pago).toLocaleDateString('es-PA')}</td>
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{egreso.cuenta_bancaria?.nombre_banco || 'N/A'}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-600">{egreso.metodo_pago}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-500">{egreso.referencia || 'Sin referencia'}</td>
+                                        <td className="px-6 py-4 text-sm text-right font-black text-green-600">{formatCurrency(egreso.monto_pagado)}</td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan="6" className="px-6 py-10 text-center text-slate-400 font-bold">
+                                            Esta factura no tiene pagos registrados todavia
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
                         </table>
                     </div>
                 </div>

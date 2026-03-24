@@ -44,7 +44,7 @@ export default function Index({ procesos }) {
             if (estado === 'Diseño Rechazado') return 'bg-red-500';
             return 'bg-slate-400';
         }
-        if (estado === 'En Máquina') return 'bg-green-500';
+        if (estado === 'Producción' || estado === 'En Máquina') return 'bg-green-500';
         return 'bg-amber-500';
     };
 

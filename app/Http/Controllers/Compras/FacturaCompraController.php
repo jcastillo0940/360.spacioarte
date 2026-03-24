@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FacturaCompra;
 use App\Models\OrdenCompra;
 use App\Models\Item;
+use App\Models\TenantConfig;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -15,7 +16,11 @@ class FacturaCompraController extends Controller
     public function index()
     {
         if (request()->is('api/*')) {
-            return response()->json(FacturaCompra::with(['proveedor', 'ordenOriginal'])->orderBy('id', 'desc')->get());
+            return response()->json(
+                FacturaCompra::with(['proveedor', 'ordenOriginal'])
+                    ->orderBy('id', 'desc')
+                    ->get()
+            );
         }
         
         return inertia('Compras/Facturas/Index');
@@ -25,7 +30,7 @@ class FacturaCompraController extends Controller
     {
         if (request()->is('api/*')) {
             return response()->json(
-                FacturaCompra::with(['proveedor', 'ordenOriginal', 'detalles.item'])->findOrFail($id)
+                FacturaCompra::with(['proveedor', 'ordenOriginal', 'detalles.item', 'egresos.cuentaBancaria'])->findOrFail($id)
             );
         }
         
@@ -164,6 +169,11 @@ class FacturaCompraController extends Controller
     public function convertirDesdeOrden(Request $request, $ordenId)
     {
         $orden = OrdenCompra::with('detalles.item')->findOrFail($ordenId);
+        $config = TenantConfig::getSettings();
+
+        if (!$config->cta_recepcion_transitoria_id || !$config->cta_itbms_compras_id || !$config->cta_cxp_id) {
+            return back()->with('error', 'Falta configurar cuentas contables (Puente Recepción, ITBMS Compras o CxP) para facturar.');
+        }
         
         // 1. Evitar duplicados
         $existe = FacturaCompra::where('orden_compra_id', $ordenId)->first();
@@ -222,6 +232,8 @@ class FacturaCompraController extends Controller
                     'total' => $lineaSubtotal + $lineaItbms
                 ]);
             }
+
+            $this->generarAsientoFactura($factura, $subtotal, $itbms_total, $total, $config);
 
             DB::commit();
             return redirect()->route('compras.facturas.show', $factura->id)

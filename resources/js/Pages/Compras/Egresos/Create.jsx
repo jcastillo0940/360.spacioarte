@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm, usePage } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 
 export default function Create() {
+    const { url } = usePage();
     const [facturas, setFacturas] = useState([]);
     const [bancos, setBancos] = useState([]);
 
@@ -20,6 +21,15 @@ export default function Create() {
         loadData();
     }, []);
 
+    useEffect(() => {
+        const params = new URLSearchParams(url.split('?')[1] || '');
+        const facturaId = params.get('factura');
+
+        if (facturaId) {
+            setData('factura_compra_id', facturaId);
+        }
+    }, [url]);
+
     const loadData = () => {
         fetch('/api/compras/egresos/datos')
             .then(res => res.json())
@@ -30,6 +40,8 @@ export default function Create() {
     };
 
     const facturaSeleccionada = facturas.find(f => f.id == data.factura_compra_id);
+    const saldoSeleccionado = Number(facturaSeleccionada?.saldo_pendiente || 0);
+    const bancoSeleccionado = bancos.find(b => b.id == data.bank_account_id);
 
     const submit = (e) => {
         e.preventDefault();
@@ -67,7 +79,7 @@ export default function Create() {
                             <option value="">-- Seleccione una factura --</option>
                             {facturas.map(f => (
                                 <option key={f.id} value={f.id}>
-                                    {f.numero_factura} - {f.proveedor.razon_social} (Saldo: {formatCurrency(f.saldo_pendiente)})
+                                    {f.numero_factura_proveedor} - {f.proveedor.razon_social} (Saldo: {formatCurrency(f.saldo_pendiente)})
                                 </option>
                             ))}
                         </select>
@@ -76,7 +88,12 @@ export default function Create() {
 
                     {facturaSeleccionada && (
                         <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 flex justify-between items-center">
-                            <span className="text-orange-700 font-bold">Saldo a Pagar:</span>
+                            <div>
+                                <div className="text-orange-700 font-bold">Saldo a Pagar:</div>
+                                <div className="text-xs font-bold text-orange-600 uppercase tracking-widest mt-1">
+                                    {facturaSeleccionada.proveedor?.razon_social}
+                                </div>
+                            </div>
                             <span className="text-2xl font-black text-orange-800">{formatCurrency(facturaSeleccionada.saldo_pendiente)}</span>
                         </div>
                     )}
@@ -95,6 +112,11 @@ export default function Create() {
                                     <option key={b.id} value={b.id}>{b.nombre_banco} (***{b.numero_cuenta.slice(-4)})</option>
                                 ))}
                             </select>
+                            {bancoSeleccionado && (
+                                <div className="mt-2 text-xs font-bold text-slate-500">
+                                    Saldo disponible: {formatCurrency(bancoSeleccionado.saldo_actual)}
+                                </div>
+                            )}
                         </div>
 
                         <div>
@@ -105,7 +127,7 @@ export default function Create() {
                                 value={data.monto_pagado}
                                 onChange={e => setData('monto_pagado', e.target.value)}
                                 className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-                                max={facturaSeleccionada?.saldo_pendiente}
+                                max={saldoSeleccionado || undefined}
                                 required
                             />
                         </div>
@@ -149,7 +171,13 @@ export default function Create() {
 
                     <button 
                         type="submit" 
-                        disabled={processing || !data.factura_compra_id}
+                        disabled={
+                            processing ||
+                            !data.factura_compra_id ||
+                            Number(data.monto_pagado || 0) <= 0 ||
+                            Number(data.monto_pagado || 0) > saldoSeleccionado ||
+                            Number(data.monto_pagado || 0) > Number(bancoSeleccionado?.saldo_actual || Infinity)
+                        }
                         className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition disabled:bg-slate-400 flex items-center justify-center gap-2"
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,6 +185,16 @@ export default function Create() {
                         </svg>
                         {processing ? 'Procesando...' : 'Confirmar Pago'}
                     </button>
+                    {facturaSeleccionada && Number(data.monto_pagado || 0) > saldoSeleccionado && (
+                        <div className="text-sm font-bold text-red-600">
+                            El monto a pagar no puede exceder el saldo pendiente de la factura.
+                        </div>
+                    )}
+                    {bancoSeleccionado && Number(data.monto_pagado || 0) > Number(bancoSeleccionado.saldo_actual || 0) && (
+                        <div className="text-sm font-bold text-red-600">
+                            El monto a pagar no puede exceder el saldo disponible en la cuenta bancaria seleccionada.
+                        </div>
+                    )}
                 </form>
             </div>
         </AuthenticatedLayout>

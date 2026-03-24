@@ -39,6 +39,153 @@ export default function Edit({ ordenId }) {
         return `${year}-${month}-${day}`;
     };
 
+    const toNumber = (value) => {
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const normalizarUnidadMaterial = (unidad) => String(unidad || 'UND').trim().toUpperCase();
+
+    const convertirCmALaUnidadInventario = (material, largoCm) => {
+        const unidad = normalizarUnidadMaterial(material?.unidad_medida);
+
+        if (unidad === 'CM') return largoCm;
+        if (unidad === 'MT' || unidad === 'M') return largoCm / 100;
+        if (unidad === 'UND') return largoCm;
+
+        return largoCm;
+    };
+
+    const calcularCapacidadHoja = (item, material) => {
+        const anchoMaterial = toNumber(material?.ancho_imprimible || material?.ancho_cm || material?.ancho);
+        const largoMaterial = toNumber(material?.largo_imprimible || material?.largo_cm || material?.largo);
+        const anchoPieza = toNumber(item.ancho_imprimible);
+        const largoPieza = toNumber(item.largo_imprimible);
+        const sangrado = toNumber(item.sangrado);
+        const separacion = Math.max(toNumber(item.separacion_piezas), toNumber(material?.margen_seguridad_cm));
+
+        if (anchoMaterial <= 0 || largoMaterial <= 0 || anchoPieza <= 0 || largoPieza <= 0) return null;
+
+        const calcularOrientacion = (anchoTrabajo, largoTrabajo) => {
+            const piezasAncho = Math.floor((anchoMaterial - (sangrado * 2)) / (anchoTrabajo + separacion));
+            const piezasLargo = Math.floor((largoMaterial - (sangrado * 2)) / (largoTrabajo + separacion));
+            return Math.max(0, piezasAncho) * Math.max(0, piezasLargo);
+        };
+
+        let capacidad = calcularOrientacion(anchoPieza, largoPieza);
+
+        if (item.permite_rotacion) {
+            capacidad = Math.max(capacidad, calcularOrientacion(largoPieza, anchoPieza));
+        }
+
+        return capacidad > 0 ? capacidad : 0;
+    };
+
+    const calcularConsumoRollo = (item, material) => {
+        const anchoMaterial = toNumber(material?.ancho_imprimible || material?.ancho_cm || material?.ancho);
+        const anchoPieza = toNumber(item.ancho_imprimible);
+        const largoPieza = toNumber(item.largo_imprimible);
+        const sangrado = toNumber(item.sangrado);
+        const separacion = Math.max(toNumber(item.separacion_piezas), toNumber(material?.margen_seguridad_cm));
+        const cantidad = toNumber(item.cantidad);
+
+        if (anchoMaterial <= 0 || anchoPieza <= 0 || largoPieza <= 0 || cantidad <= 0) return null;
+
+        const calcularOrientacion = (anchoTrabajo, largoTrabajo) => {
+            const piezasPorFila = Math.floor((anchoMaterial - (sangrado * 2)) / (anchoTrabajo + separacion));
+            if (piezasPorFila <= 0) return null;
+
+            const filas = Math.ceil(cantidad / piezasPorFila);
+            const largoTotalCm = (filas * largoTrabajo) + (Math.max(0, filas - 1) * separacion) + (sangrado * 2);
+
+            return { piezasPorFila, filas, largoTotalCm };
+        };
+
+        let mejor = calcularOrientacion(anchoPieza, largoPieza);
+
+        if (item.permite_rotacion) {
+            const rotada = calcularOrientacion(largoPieza, anchoPieza);
+            if (rotada && (!mejor || rotada.largoTotalCm < mejor.largoTotalCm)) {
+                mejor = rotada;
+            }
+        }
+
+        if (!mejor) return null;
+
+        return {
+            capacidadPorLinea: mejor.piezasPorFila,
+            lineasNecesarias: mejor.filas,
+            largoMaterialCm: Number(mejor.largoTotalCm.toFixed(2)),
+            cantidadInventario: Number(convertirCmALaUnidadInventario(material, mejor.largoTotalCm).toFixed(4)),
+            unidadConsumo: normalizarUnidadMaterial(material?.unidad_medida || 'CM'),
+        };
+    };
+
+    const calcularConsumoMaterial = (item, material, maquina) => {
+        const cantidad = toNumber(item.cantidad);
+
+        if (!item.requires_recipe || !material || !maquina || cantidad <= 0) {
+            return {
+                capacidad_por_pliego: 0,
+                pliegos_necesarios: 0,
+                total_piezas_calculadas: cantidad,
+                usa_material_completo: !!item.usa_material_completo,
+                tipo_calculo_material: null,
+                cantidad_material_calculada: null,
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: null,
+            };
+        }
+
+        if (item.usa_material_completo) {
+            return {
+                capacidad_por_pliego: 1,
+                pliegos_necesarios: cantidad,
+                total_piezas_calculadas: cantidad,
+                usa_material_completo: true,
+                tipo_calculo_material: 'unidad_completa',
+                cantidad_material_calculada: Number(cantidad.toFixed(4)),
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: normalizarUnidadMaterial(material?.unidad_medida || 'UND'),
+            };
+        }
+
+        if (material.es_rollo) {
+            const consumoRollo = calcularConsumoRollo(item, material);
+
+            return {
+                capacidad_por_pliego: consumoRollo?.capacidadPorLinea || 0,
+                pliegos_necesarios: consumoRollo?.lineasNecesarias || 0,
+                total_piezas_calculadas: cantidad,
+                usa_material_completo: false,
+                tipo_calculo_material: 'rollo_lineal',
+                cantidad_material_calculada: consumoRollo?.cantidadInventario ?? null,
+                largo_material_calculado_cm: consumoRollo?.largoMaterialCm ?? null,
+                unidad_consumo_material: consumoRollo?.unidadConsumo || normalizarUnidadMaterial(material?.unidad_medida || 'CM'),
+            };
+        }
+
+        const capacidad = calcularCapacidadHoja(item, material);
+        const pliegos = capacidad > 0 ? Math.ceil(cantidad / capacidad) : 0;
+
+        return {
+            capacidad_por_pliego: capacidad || 0,
+            pliegos_necesarios: pliegos,
+            total_piezas_calculadas: cantidad,
+            usa_material_completo: false,
+            tipo_calculo_material: 'pliego',
+            cantidad_material_calculada: pliegos > 0 ? Number(pliegos.toFixed(4)) : null,
+            largo_material_calculado_cm: null,
+            unidad_consumo_material: normalizarUnidadMaterial(material?.unidad_medida || 'UND'),
+        };
+    };
+
+    const filtrarSoportesCompatibles = (producto) => {
+        return (producto?.papeles_compatibles || []).filter((papel) =>
+            papel.es_para_nesting && !papel.requires_recipe && papel.id !== producto?.id
+        );
+    };
+
     useEffect(() => {
         console.log('Cargando datos para orden:', ordenId);
         
@@ -55,6 +202,8 @@ export default function Edit({ ordenId }) {
             setProductos(datosData.productos || []);
             setProductosFiltrados(datosData.productos || []);
             
+            const catalogoProductos = datosData.productos || [];
+
             // Preparar datos del formulario
             const datosIniciales = {
                 contacto_id: String(ordenData.contacto_id || ''),
@@ -62,12 +211,36 @@ export default function Edit({ ordenId }) {
                 fecha_emision: formatDateForInput(ordenData.fecha_emision),
                 fecha_entrega: formatDateForInput(ordenData.fecha_entrega),
                 estado: ordenData.estado || '',
-                items: ordenData.detalles?.map(d => ({
-                    item_id: d.item_id,
-                    nombre: d.item?.nombre || 'Producto',
-                    cantidad: parseFloat(d.cantidad),
-                    precio_unitario: parseFloat(d.precio_unitario)
-                })) || []
+                items: ordenData.detalles?.map(d => {
+                    const producto = catalogoProductos.find(p => p.id === d.item_id) || d.item || {};
+
+                    return {
+                        item_id: d.item_id,
+                        nombre: d.item?.nombre || producto?.nombre || 'Producto',
+                        cantidad: parseFloat(d.cantidad),
+                        precio_unitario: parseFloat(d.precio_unitario),
+                        tasa_itbms: parseFloat(d.porcentaje_itbms || producto?.tax?.tasa || 0),
+                        requires_recipe: producto?.requires_recipe || false,
+                        tipo_impresion: producto?.tipo_impresion || '',
+                        procesos_compatibles: producto?.procesos_compatibles || [],
+                        papeles_compatibles: filtrarSoportesCompatibles(producto),
+                        ancho_imprimible: producto?.ancho_imprimible,
+                        largo_imprimible: producto?.largo_imprimible,
+                        sangrado: producto?.sangrado,
+                        separacion_piezas: producto?.separacion_piezas,
+                        permite_rotacion: producto?.permite_rotacion,
+                        proceso_id: d.proceso_id || producto?.proceso_id || '',
+                        material_id: d.material_id || '',
+                        usa_material_completo: !!d.usa_material_completo,
+                        tipo_calculo_material: d.tipo_calculo_material || null,
+                        cantidad_material_calculada: d.cantidad_material_calculada,
+                        largo_material_calculado_cm: d.largo_material_calculado_cm,
+                        unidad_consumo_material: d.unidad_consumo_material,
+                        pliegos_necesarios: d.pliegos_necesarios || 0,
+                        capacidad_por_pliego: d.capacidad_por_pliego || 0,
+                        total_piezas_calculadas: d.total_piezas_calculadas || parseFloat(d.cantidad),
+                    };
+                }) || []
             };
             
             console.log('✅ Datos a cargar en formulario:', datosIniciales);
@@ -110,6 +283,26 @@ export default function Edit({ ordenId }) {
                 nombre: producto.nombre,
                 cantidad: 1,
                 precio_unitario: producto.precio_venta || 0,
+                tasa_itbms: producto.tax?.tasa || 0,
+                requires_recipe: producto.requires_recipe || false,
+                tipo_impresion: producto.tipo_impresion || '',
+                procesos_compatibles: producto.procesos_compatibles || [],
+                papeles_compatibles: filtrarSoportesCompatibles(producto),
+                ancho_imprimible: producto.ancho_imprimible,
+                largo_imprimible: producto.largo_imprimible,
+                sangrado: producto.sangrado,
+                separacion_piezas: producto.separacion_piezas,
+                permite_rotacion: producto.permite_rotacion,
+                proceso_id: producto.procesos_compatibles?.length === 1 ? producto.procesos_compatibles[0].id : '',
+                material_id: filtrarSoportesCompatibles(producto).length === 1 ? filtrarSoportesCompatibles(producto)[0].id : '',
+                usa_material_completo: false,
+                tipo_calculo_material: null,
+                cantidad_material_calculada: null,
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: null,
+                pliegos_necesarios: 0,
+                capacidad_por_pliego: 0,
+                total_piezas_calculadas: 0,
             };
             setFormData({...formData, items: [...formData.items, nuevoItem]});
         }
@@ -134,10 +327,42 @@ export default function Edit({ ordenId }) {
     };
 
     useEffect(() => {
-        const sub = formData.items.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0);
-        const imp = sub * 0.07; // 7% ITBMS
+        let sub = 0;
+        let imp = 0;
+
+        const nuevosItems = formData.items.map(item => {
+            const lineaSubtotal = item.cantidad * item.precio_unitario;
+            sub += lineaSubtotal;
+            imp += lineaSubtotal * ((item.tasa_itbms ?? 7) / 100);
+
+            if (item.requires_recipe && item.proceso_id && item.material_id) {
+                const papel = (item.papeles_compatibles || []).find(p => p.id == item.material_id);
+                const maquina = (item.procesos_compatibles || []).find(m => m.id == item.proceso_id);
+
+                return {
+                    ...item,
+                    ...calcularConsumoMaterial(item, papel, maquina)
+                };
+            }
+
+            return {
+                ...item,
+                capacidad_por_pliego: 0,
+                pliegos_necesarios: 0,
+                total_piezas_calculadas: item.cantidad,
+                tipo_calculo_material: null,
+                cantidad_material_calculada: null,
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: null,
+            };
+        });
+
+        if (JSON.stringify(nuevosItems) !== JSON.stringify(formData.items)) {
+            setFormData(prev => ({ ...prev, items: nuevosItems }));
+        }
+
         const tot = sub + imp;
-        
+
         setSubtotal(sub);
         setImpuesto(imp);
         setTotal(tot);
@@ -213,7 +438,7 @@ export default function Edit({ ordenId }) {
                                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                                 >
                                     <option value="">Sin asignar</option>
-                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
                                 </select>
                                 <p className="text-xs text-slate-400 mt-1">Valor actual: {formData.vendedor_id || 'ninguno'}</p>
                             </div>

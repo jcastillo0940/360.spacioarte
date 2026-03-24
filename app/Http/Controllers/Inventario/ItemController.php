@@ -7,6 +7,8 @@ use App\Models\Item;
 use App\Models\Tax;
 use App\Models\Proceso;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class ItemController extends Controller
@@ -22,7 +24,7 @@ class ItemController extends Controller
                 'items' => Item::with(['tax', 'procesosCompatibles', 'papelesCompatibles', 'units', 'ingredientes.insumo'])->get(),
                 'taxes' => Tax::all(),
                 'procesos' => Proceso::where('activo', true)->get(),
-                'papeles' => Item::where('es_para_nesting', true)->where('activo', true)->get(),
+                'papeles' => Item::materialesSoporte()->get(),
                 'insumos' => Item::where('activo', true)->get()
             ]);
         }
@@ -41,7 +43,7 @@ class ItemController extends Controller
         return Inertia::render('Inventario/Items/Form', [
             'taxes' => Tax::all(),
             'procesos' => Proceso::where('activo', true)->get(),
-            'papeles' => Item::where('es_para_nesting', true)->where('activo', true)->get(),
+            'papeles' => Item::materialesSoporte()->get(),
             'insumos' => Item::where('activo', true)->get()
         ]);
     }
@@ -93,6 +95,8 @@ class ItemController extends Controller
             'ingredientes.*.unidad' => 'nullable|string',
         ]);
 
+        $validated = $this->normalizeAndValidateBusinessRules($request, $validated);
+
         $item = Item::create($validated);
 
         if (!empty($request->units)) {
@@ -129,7 +133,7 @@ class ItemController extends Controller
             'item' => $item,
             'taxes' => Tax::all(),
             'procesos' => Proceso::where('activo', true)->get(),
-            'papeles' => Item::where('es_para_nesting', true)->where('activo', true)->get(),
+            'papeles' => Item::materialesSoporte()->get(),
             'insumos' => Item::where('activo', true)->get()
         ]);
     }
@@ -181,6 +185,8 @@ class ItemController extends Controller
             'ingredientes.*.cantidad' => 'required|numeric|min:0.0001',
             'ingredientes.*.unidad' => 'nullable|string',
         ]);
+
+        $validated = $this->normalizeAndValidateBusinessRules($request, $validated, $item);
 
         $item->update($validated);
 
@@ -249,7 +255,106 @@ class ItemController extends Controller
 
     public function destroy(Item $item)
     {
-        $item->delete();
-        return redirect()->route('items.index')->with('success', 'Producto eliminado correctamente');
+        try {
+            DB::transaction(function () use ($item) {
+                $item->procesosCompatibles()->detach();
+                $item->papelesCompatibles()->detach();
+                $item->units()->delete();
+                $item->ingredientes()->delete();
+                $item->delete();
+            });
+
+            return redirect()->route('items.index')->with('success', 'Articulo eliminado correctamente.');
+        } catch (\Throwable $e) {
+            $item->update(['activo' => false]);
+
+            return redirect()->route('items.index')->with(
+                'success',
+                'El articulo tenia movimientos o relaciones historicas, asi que fue desactivado en lugar de borrarse.'
+            );
+        }
+    }
+
+    private function normalizeAndValidateBusinessRules(Request $request, array $validated, ?Item $item = null): array
+    {
+        $validated['es_rollo'] = $request->boolean('es_rollo');
+        $validated['es_para_nesting'] = $request->boolean('es_para_nesting');
+        $validated['es_insumo'] = $request->boolean('es_insumo');
+        $validated['requires_recipe'] = $request->boolean('requires_recipe');
+        $validated['permite_rotacion'] = $request->boolean('permite_rotacion', true);
+
+        $validated['proceso_id'] = $validated['proceso_id'] ?? null;
+        $validated['item_base_id'] = $validated['item_base_id'] ?? null;
+
+        $errors = [];
+
+        if ($item && !empty($validated['item_base_id']) && (int) $validated['item_base_id'] === (int) $item->id) {
+            $errors['item_base_id'] = 'El material base no puede ser el mismo artículo.';
+        }
+
+        if ($validated['requires_recipe'] && empty($validated['proceso_id']) && empty($validated['procesos_ids'])) {
+            $errors['proceso_id'] = 'Define un proceso principal o al menos un proceso compatible para fabricar este producto.';
+        }
+
+        if ($validated['es_para_nesting'] && empty($validated['ancho_cm'])) {
+            $errors['ancho_cm'] = 'Los materiales soporte para nesting deben definir el ancho del papel, vinilo o soporte.';
+        }
+
+        if ($validated['es_para_nesting'] && empty($validated['es_rollo']) && empty($validated['largo_cm'])) {
+            $errors['largo_cm'] = 'Los materiales soporte en hoja o pliego deben definir el largo del soporte.';
+        }
+
+        if (!empty($validated['papeles_ids'])) {
+            $papersCount = Item::whereIn('id', $validated['papeles_ids'])
+                ->materialesSoporte()
+                ->count();
+
+            if ($papersCount !== count($validated['papeles_ids'])) {
+                $errors['papeles_ids'] = 'Solo puedes asignar materiales soporte reales: papel, vinilo, transfer o insumos equivalentes.';
+            }
+        }
+
+        if (!empty($validated['papeles_ids']) && $item && in_array((int) $item->id, array_map('intval', $validated['papeles_ids']), true)) {
+            $errors['papeles_ids'] = 'Un producto no puede asignarse a sí mismo como papel o soporte compatible.';
+        }
+
+        if (!empty($validated['papeles_ids']) && !$item && !empty($request->codigo)) {
+            // Sin ID aún no podemos comparar por registro, pero sí prevenimos el caso de marcar el mismo SKU como soporte fabricable.
+            $supportsFabricables = Item::whereIn('id', $validated['papeles_ids'])
+                ->where('requires_recipe', true)
+                ->count();
+
+            if ($supportsFabricables > 0) {
+                $errors['papeles_ids'] = 'Los papeles o soportes compatibles no pueden ser productos que también se fabrican.';
+            }
+        }
+
+        if ($validated['es_para_nesting'] && $validated['requires_recipe']) {
+            $errors['es_para_nesting'] = 'Un producto fabricable no debe marcarse como material soporte de nesting.';
+        }
+
+        if (!empty($validated['procesos_ids'])) {
+            $processCount = Proceso::whereIn('id', $validated['procesos_ids'])
+                ->where('activo', true)
+                ->count();
+
+            if ($processCount !== count($validated['procesos_ids'])) {
+                $errors['procesos_ids'] = 'Solo puedes asignar procesos activos.';
+            }
+        }
+
+        if (!empty($validated['ingredientes'])) {
+            foreach ($validated['ingredientes'] as $index => $ingrediente) {
+                if ($item && (int) $ingrediente['insumo_id'] === (int) $item->id) {
+                    $errors["ingredientes.$index.insumo_id"] = 'El producto no puede ser insumo de su propia receta.';
+                }
+            }
+        }
+
+        if (!empty($errors)) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return $validated;
     }
 }

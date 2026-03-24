@@ -76,23 +76,19 @@ export default function Show({ ordenId }) {
 
     useEffect(() => {
         if (!orden?.tracking_token) return;
-
+        if (!import.meta.env.VITE_PUSHER_APP_KEY) return;
+        
         const pusher = new Pusher(import.meta.env.VITE_PUSHER_APP_KEY, {
             cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
-            forceTLS: true,
-            enabledTransports: ['ws', 'wss']
         });
 
         const channel = pusher.subscribe(`chat.${orden.tracking_token}`);
-
-        channel.bind('nuevo-mensaje', function (data) {
-            const nuevoMensaje = data.mensaje || data;
+        
+        channel.bind('chat.message', (data) => {
+            const finalMessage = data.message || data;
+            
+            // Deduplicate incoming messages.
             setMensajes(prev => {
-                const existe = prev.some(m =>
-                    (m.id && m.id === nuevoMensaje.id) ||
-                    (m.texto === nuevoMensaje.texto && m.created_at === nuevoMensaje.created_at && m.emisor === nuevoMensaje.emisor)
-                );
-                if (existe) return prev;
                 return [...prev, nuevoMensaje];
             });
         });

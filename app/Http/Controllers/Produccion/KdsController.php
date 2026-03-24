@@ -61,8 +61,8 @@ class KdsController extends Controller
 
         // 2. Trabajos de Producción (solo si tiene permiso)
         if ($verProduccion) {
-            $query = OrdenProduccion::with(['venta.cliente', 'maquina', 'materiaPrima', 'materiaUsada'])
-                ->whereIn('estado', ['Pendiente', 'En Máquina'])
+            $query = OrdenProduccion::with(['venta.cliente', 'maquina', 'producto', 'materiaPrima', 'materiaUsada'])
+                ->whereIn('estado', [\App\Enums\OrdenEstado::PENDIENTE->value, \App\Enums\OrdenEstado::PRODUCCION->value])
                 ->orderBy('fecha_entrega_proyectada', 'asc');
 
             // Si es operador específico, filtrar por tipo de máquina
@@ -86,7 +86,7 @@ class KdsController extends Controller
                         'proceso_id' => $p->proceso_id,
                         'proceso_nombre' => $p->maquina->nombre ?? 'N/A',
                         'categoria' => $p->maquina->categoria_tecnologia ?? 'N/A',
-                        'item' => $p->materiaPrima->nombre ?? 'Producto',
+                        'item' => $p->producto->nombre ?? $p->materiaPrima->nombre ?? 'Producto',
                         'materia_prima' => $p->materiaUsada->nombre ?? 'N/A',
                         'pliegos' => $p->pliegos,
                         'capacidad' => $p->capacidad_nesting,

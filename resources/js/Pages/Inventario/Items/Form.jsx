@@ -18,6 +18,8 @@ import {
 export default function Form({ item = null, taxes = [], procesos = [], papeles = [], insumos = [] }) {
     const isEditing = !!item;
     const [activeTab, setActiveTab] = useState('basico');
+    const soportesDisponibles = papeles.filter((papel) => !papel.requires_recipe && papel.id !== item?.id);
+    const materialesBaseDisponibles = insumos.filter((insumo) => insumo.id !== item?.id && !insumo.requires_recipe);
 
     const { data, setData, post, put, processing, errors } = useForm({
         codigo: item?.codigo || '',
@@ -28,6 +30,12 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
         tax_id: item?.tax_id || (taxes.length > 0 ? taxes[0].id : ''),
         unidad_medida: item?.unidad_medida || 'UND',
         categoria: item?.categoria || '',
+        ancho_cm: item?.ancho_cm || '',
+        largo_cm: item?.largo_cm || '',
+        es_rollo: item?.es_rollo || false,
+        margen_seguridad_cm: item?.margen_seguridad_cm || 0.5,
+        proceso_id: item?.proceso_id || '',
+        item_base_id: item?.item_base_id || '',
         es_para_nesting: item?.es_para_nesting || false,
         es_insumo: item?.es_insumo || false,
         requires_recipe: item?.requires_recipe || false,
@@ -42,6 +50,16 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
         units: item?.units || [],
         ingredientes: item?.ingredientes || []
     });
+
+    const esFabricable = !!data.requires_recipe;
+    const esSoporte = !!data.es_para_nesting;
+    const resumenRol = esFabricable
+        ? 'Producto fabricable'
+        : esSoporte
+            ? 'Material soporte'
+            : data.es_insumo
+                ? 'Insumo interno'
+                : 'Producto o servicio';
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -95,6 +113,12 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
     };
 
+    useEffect(() => {
+        if (data.requires_recipe && data.es_para_nesting) {
+            setData('es_para_nesting', false);
+        }
+    }, [data.requires_recipe, data.es_para_nesting, setData]);
+
     return (
         <AuthenticatedLayout>
             <Head title={isEditing ? `Editar: ${item.nombre}` : "Registrar Nuevo Producto"} />
@@ -128,6 +152,28 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                 <span className="text-xl font-black text-blue-700 leading-tight">{parseFloat(item.stock_actual).toLocaleString()}</span>
                             </div>
                         )}
+                        <div className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Rol</span>
+                            <span className="text-sm font-black text-slate-800 leading-tight">{resumenRol}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white border border-slate-200 rounded-3xl p-5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Caso 1</div>
+                        <h3 className="font-black text-slate-900">Producto fabricable</h3>
+                        <p className="text-xs text-slate-500 mt-2">Activa manufactura, define proceso, material base y soportes compatibles.</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-3xl p-5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Caso 2</div>
+                        <h3 className="font-black text-slate-900">Material soporte</h3>
+                        <p className="text-xs text-slate-500 mt-2">Marca nesting solo si este item es papel, vinilo, transfer o un soporte real de impresion.</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-3xl p-5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Caso 3</div>
+                        <h3 className="font-black text-slate-900">Insumo interno</h3>
+                        <p className="text-xs text-slate-500 mt-2">Activa uso interno si el item no debe venderse directo y solo se consumira en receta.</p>
                     </div>
                 </div>
 
@@ -215,6 +261,40 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                             />
                                         </div>
 
+                                        <div className={`p-5 rounded-[2rem] border ${esFabricable ? 'bg-blue-50 border-blue-200' : esSoporte ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className={`text-[10px] font-black uppercase tracking-[0.2em] ${esFabricable ? 'text-blue-500' : esSoporte ? 'text-emerald-500' : 'text-slate-400'}`}>Resumen</div>
+                                            <h3 className={`mt-2 font-black text-lg ${esFabricable ? 'text-blue-900' : esSoporte ? 'text-emerald-900' : 'text-slate-900'}`}>{resumenRol}</h3>
+                                            <p className={`text-xs font-bold mt-2 ${esFabricable ? 'text-blue-700' : esSoporte ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                                {esFabricable
+                                                    ? 'Este item generara ordenes de produccion y necesitara proceso, material base y soportes compatibles.'
+                                                    : esSoporte
+                                                        ? 'Este item podra usarse como papel o soporte en ventas y pliegos. No debe ser un producto que tambien se fabrica.'
+                                                        : 'Este item funcionara como producto simple, servicio o insumo segun la configuracion adicional que elijas.'}
+                                            </p>
+                                        </div>
+
+                                        <div className={`p-6 rounded-3xl border flex items-center gap-4 ${esFabricable ? 'bg-slate-100 border-slate-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                                            <div className={`p-3 rounded-2xl ${esFabricable ? 'bg-slate-300 text-white' : 'bg-emerald-500 text-white'}`}>
+                                                <HardHat size={22} />
+                                            </div>
+                                            <div className="flex-1">
+                                                <h4 className={`font-black text-sm uppercase ${esFabricable ? 'text-slate-700' : 'text-emerald-900'}`}>Material soporte para nesting</h4>
+                                                <p className={`text-xs font-bold mt-1 ${esFabricable ? 'text-slate-500' : 'text-emerald-700'}`}>
+                                                    {esFabricable
+                                                        ? 'Los productos fabricables no deben marcarse como soporte. Usa los papeles compatibles en la pestana Manufactura.'
+                                                        : 'Activalo solo si este item es papel, vinilo, transfer u otro soporte real que se consumira en produccion.'}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => !esFabricable && setData('es_para_nesting', !data.es_para_nesting)}
+                                                disabled={esFabricable}
+                                                className={`w-14 h-8 rounded-full p-1.5 transition-colors ${data.es_para_nesting && !esFabricable ? 'bg-emerald-500' : 'bg-slate-200'} ${esFabricable ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                <div className={`w-5 h-5 bg-white rounded-full transition-transform ${data.es_para_nesting && !esFabricable ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                                            </button>
+                                        </div>
+
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Artículo</label>
@@ -294,6 +374,85 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                                 <div className={`w-5 h-5 bg-white rounded-full transition-transform ${data.es_insumo ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                             </button>
                                         </div>
+
+                                        <div className={`rounded-[2rem] border p-6 ${esSoporte ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div>
+                                                    <div className={`text-[10px] font-black uppercase tracking-[0.2em] ${esSoporte ? 'text-emerald-500' : 'text-slate-400'}`}>Soporte de impresion</div>
+                                                    <h4 className={`mt-2 font-black text-lg ${esSoporte ? 'text-emerald-900' : 'text-slate-900'}`}>Papel, vinilo, transfer o material para nesting</h4>
+                                                    <p className={`mt-2 text-xs font-bold ${esSoporte ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                                        {esSoporte
+                                                            ? 'Este item ya esta marcado como soporte. Aqui defines su ancho, largo o si se maneja como rollo.'
+                                                            : 'Activa esta opcion solo si este item es un soporte real que se consumira en impresion.'}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => !esFabricable && setData('es_para_nesting', !data.es_para_nesting)}
+                                                    disabled={esFabricable}
+                                                    className={`w-14 h-8 rounded-full p-1.5 transition-colors ${data.es_para_nesting && !esFabricable ? 'bg-emerald-500' : 'bg-slate-200'} ${esFabricable ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${data.es_para_nesting && !esFabricable ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                                                </button>
+                                            </div>
+
+                                            {esSoporte && (
+                                                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] ml-1">Ancho del soporte (cm)</label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={data.ancho_cm}
+                                                            onChange={e => setData('ancho_cm', e.target.value)}
+                                                            className="w-full bg-white border-emerald-100 rounded-2xl px-5 py-4 font-black text-slate-800"
+                                                            placeholder="Ej: 50"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] ml-1">
+                                                            {data.es_rollo ? 'Largo de referencia (cm)' : 'Largo del soporte (cm)'}
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={data.largo_cm}
+                                                            onChange={e => setData('largo_cm', e.target.value)}
+                                                            className="w-full bg-white border-emerald-100 rounded-2xl px-5 py-4 font-black text-slate-800"
+                                                            placeholder={data.es_rollo ? 'Ej: 100' : 'Ej: 70'}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] ml-1">Separacion minima (cm)</label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={data.margen_seguridad_cm}
+                                                            onChange={e => setData('margen_seguridad_cm', e.target.value)}
+                                                            className="w-full bg-white border-emerald-100 rounded-2xl px-5 py-4 font-black text-slate-800"
+                                                            placeholder="0.50"
+                                                        />
+                                                    </div>
+                                                    <label className="flex items-center gap-3 p-4 bg-white rounded-2xl border border-emerald-100 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={data.es_rollo}
+                                                            onChange={e => setData('es_rollo', e.target.checked)}
+                                                            className="w-4 h-4 rounded text-emerald-600 border-emerald-200"
+                                                        />
+                                                        <span className="text-[10px] font-black uppercase text-emerald-700">Es rollo de largo variable</span>
+                                                    </label>
+                                                    <div className="md:col-span-2 xl:col-span-4 text-[10px] font-bold uppercase text-emerald-700">
+                                                        Si marcas este item como soporte, aqui es donde defines el ancho y largo que te pide el sistema para nesting.
+                                                    </div>
+                                                    {(errors.ancho_cm || errors.largo_cm || errors.es_para_nesting) && (
+                                                        <div className="md:col-span-2 xl:col-span-4 text-red-500 text-[10px] font-bold uppercase">
+                                                            {errors.ancho_cm || errors.largo_cm || errors.es_para_nesting}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
@@ -319,6 +478,41 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
 
                                             {data.requires_recipe && (
                                                 <div className="space-y-6 pt-8 border-t border-blue-100">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-blue-600 uppercase mb-2 block tracking-[0.2em] ml-1">Proceso Principal</label>
+                                                            <select
+                                                                value={data.proceso_id}
+                                                                onChange={e => setData('proceso_id', e.target.value)}
+                                                                className="w-full bg-white border-blue-200 rounded-2xl px-6 py-4 font-bold text-slate-800 text-lg shadow-sm"
+                                                            >
+                                                                <option value="">Selecciona una maquina principal...</option>
+                                                                {procesos.map((proceso) => (
+                                                                    <option key={proceso.id} value={proceso.id}>
+                                                                        {proceso.nombre}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            {errors.proceso_id && <p className="text-red-500 text-[10px] font-bold uppercase ml-1 italic">{errors.proceso_id}</p>}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-blue-600 uppercase mb-2 block tracking-[0.2em] ml-1">Material Base Principal</label>
+                                                            <select
+                                                                value={data.item_base_id}
+                                                                onChange={e => setData('item_base_id', e.target.value)}
+                                                                className="w-full bg-white border-blue-200 rounded-2xl px-6 py-4 font-bold text-slate-800 text-lg shadow-sm"
+                                                            >
+                                                                <option value="">Selecciona soporte o materia prima base...</option>
+                                                                {materialesBaseDisponibles.map((insumo) => (
+                                                                    <option key={insumo.id} value={insumo.id}>
+                                                                        {insumo.codigo} - {insumo.nombre}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            {errors.item_base_id && <p className="text-red-500 text-[10px] font-bold uppercase ml-1 italic">{errors.item_base_id}</p>}
+                                                        </div>
+                                                    </div>
+
                                                     <div>
                                                         <label className="text-[10px] font-black text-blue-600 uppercase mb-2 block tracking-[0.2em] ml-1">Centro de Trabajo Principal</label>
                                                         <select
@@ -356,14 +550,16 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                                                 className="w-full bg-white border-blue-200 rounded-2xl px-6 py-4 font-black text-slate-800 text-xl"
                                                                 placeholder="0.00"
                                                             />
+                                                            {errors.ancho_imprimible && <p className="text-red-500 text-[10px] font-bold uppercase mt-2 ml-1 italic">{errors.ancho_imprimible}</p>}
                                                         </div>
                                                     </div>
 
-                                                    <div className="p-6 bg-white rounded-3xl border-2 border-dashed border-blue-200 flex items-center gap-4">
+                                                    <div className="hidden p-6 bg-white rounded-3xl border-2 border-dashed border-blue-200 flex items-center gap-4">
                                                         <input
                                                             type="checkbox"
                                                             checked={data.es_para_nesting}
                                                             onChange={e => setData('es_para_nesting', e.target.checked)}
+                                                            disabled
                                                             className="w-6 h-6 rounded-lg border-blue-300 text-blue-600 focus:ring-blue-500"
                                                             id="full_nesting"
                                                         />
@@ -371,6 +567,48 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                                             <span className="font-black text-sm text-blue-900 uppercase block">Optimización por Pliegos (Nesting)</span>
                                                             <span className="text-[10px] font-bold text-blue-500 uppercase">Habilita esta opción si el producto se imprime agrupado en soportes más grandes</span>
                                                         </label>
+                                                    </div>
+                                                    <div className="hidden px-1 text-[10px] font-bold uppercase text-blue-500">
+                                                        Nota: el soporte real se marca en Datos Basicos y aqui solo eliges los soportes compatibles del producto.
+                                                    </div>
+                                                    <div className="rounded-3xl border border-blue-200 bg-white p-6">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Importante</div>
+                                                        <h4 className="mt-2 font-black text-blue-900 uppercase">Manufactura define la maquina, no el arte</h4>
+                                                        <p className="mt-2 text-xs font-bold text-blue-700">
+                                                            Aqui solo defines proceso, material base y centro de trabajo. La medida de impresion, soportes compatibles y logica de nesting se definen en la pestana Receta / BOM.
+                                                        </p>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                                        <div className="bg-white rounded-3xl border border-blue-100 p-6">
+                                                            <label className="text-[10px] font-black text-blue-600 uppercase mb-4 block tracking-[0.2em]">Procesos Compatibles</label>
+                                                            <div className="space-y-3 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                                                                {procesos.map((proceso) => (
+                                                                    <label key={proceso.id} className="flex items-center gap-3 p-3 rounded-2xl bg-blue-50 border border-blue-100 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={data.procesos_ids.includes(proceso.id)}
+                                                                            onChange={(e) => setData(
+                                                                                'procesos_ids',
+                                                                                e.target.checked
+                                                                                    ? [...data.procesos_ids, proceso.id]
+                                                                                    : data.procesos_ids.filter((id) => id !== proceso.id)
+                                                                            )}
+                                                                            className="w-4 h-4 rounded text-blue-600 border-blue-200"
+                                                                        />
+                                                                        <span className="text-sm font-bold text-slate-700">{proceso.nombre}</span>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                            {errors.procesos_ids && <p className="text-red-500 text-[10px] font-bold uppercase mt-3 ml-1 italic">{errors.procesos_ids}</p>}
+                                                        </div>
+                                                        <div className="bg-white rounded-3xl border border-blue-100 p-6">
+                                                            <label className="text-[10px] font-black text-blue-600 uppercase mb-4 block tracking-[0.2em]">Soportes y nesting</label>
+                                                            <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50 p-4">
+                                                                <p className="text-xs font-bold text-blue-700 uppercase">
+                                                                    Esta parte ahora se configura en la pestana Receta / BOM para que el usuario piense primero en el arte, el papel y el consumo.
+                                                                </p>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
@@ -526,6 +764,97 @@ export default function Form({ item = null, taxes = [], procesos = [], papeles =
                                             </div>
 
                                             <div className="space-y-6">
+                                                <div className="bg-white/80 p-6 rounded-[2rem] border border-purple-100 space-y-6">
+                                                    <div>
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500">Paso 1 de la receta</div>
+                                                        <h4 className="mt-2 font-black text-lg text-purple-900 uppercase">Huella de impresion y soporte</h4>
+                                                        <p className="mt-2 text-xs font-bold text-purple-600">
+                                                            Aqui defines la medida base del arte y con que papeles o soportes se puede fabricar. El nesting tomara esta informacion para calcular pliegos o largo de rollo.
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-purple-600 uppercase mb-2 block tracking-[0.2em] ml-1">Ancho de impresion (cm)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                value={data.ancho_imprimible}
+                                                                onChange={e => setData('ancho_imprimible', e.target.value)}
+                                                                className="w-full bg-purple-50 border-purple-100 rounded-2xl px-6 py-4 font-black text-slate-800 text-xl"
+                                                                placeholder="Ej: 6"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-purple-600 uppercase mb-2 block tracking-[0.2em] ml-1">Alto de impresion (cm)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                value={data.largo_imprimible}
+                                                                onChange={e => setData('largo_imprimible', e.target.value)}
+                                                                className="w-full bg-purple-50 border-purple-100 rounded-2xl px-6 py-4 font-black text-slate-800 text-xl"
+                                                                placeholder="Ej: 12"
+                                                            />
+                                                            {errors.ancho_imprimible && <p className="text-red-500 text-[10px] font-bold uppercase mt-2 ml-1 italic">{errors.ancho_imprimible}</p>}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-purple-600 uppercase mb-2 block tracking-[0.2em] ml-1">Separacion entre piezas (cm)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                value={data.separacion_piezas}
+                                                                onChange={e => setData('separacion_piezas', e.target.value)}
+                                                                className="w-full bg-purple-50 border-purple-100 rounded-2xl px-6 py-4 font-black text-slate-800"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-purple-600 uppercase mb-2 block tracking-[0.2em] ml-1">Sangrado (cm)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                value={data.sangrado}
+                                                                onChange={e => setData('sangrado', e.target.value)}
+                                                                className="w-full bg-purple-50 border-purple-100 rounded-2xl px-6 py-4 font-black text-slate-800"
+                                                            />
+                                                        </div>
+                                                        <label className="flex items-center gap-3 p-4 bg-purple-50 rounded-2xl border border-purple-100 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={data.permite_rotacion}
+                                                                onChange={e => setData('permite_rotacion', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-purple-600 border-purple-200"
+                                                            />
+                                                            <span className="text-[10px] font-black uppercase text-purple-700">Permitir rotacion en nesting</span>
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="bg-purple-50 rounded-3xl border border-purple-100 p-6">
+                                                        <label className="text-[10px] font-black text-purple-600 uppercase mb-4 block tracking-[0.2em]">Soportes compatibles para esta receta</label>
+                                                        <div className="space-y-3 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                                                            {soportesDisponibles.map((papel) => (
+                                                                <label key={papel.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white border border-purple-100 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={data.papeles_ids.includes(papel.id)}
+                                                                        onChange={(e) => setData(
+                                                                            'papeles_ids',
+                                                                            e.target.checked
+                                                                                ? [...data.papeles_ids, papel.id]
+                                                                                : data.papeles_ids.filter((id) => id !== papel.id)
+                                                                        )}
+                                                                        className="w-4 h-4 rounded text-purple-600 border-purple-200"
+                                                                    />
+                                                                    <span className="text-sm font-bold text-slate-700">{papel.codigo} - {papel.nombre}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                        {errors.papeles_ids && <p className="text-red-500 text-[10px] font-bold uppercase mt-3 ml-1 italic">{errors.papeles_ids}</p>}
+                                                    </div>
+                                                </div>
+
                                                 {data.ingredientes.length === 0 ? (
                                                     <div className="py-20 text-center bg-white/50 rounded-[2.5rem] border-2 border-dashed border-purple-200 flex flex-col items-center">
                                                         <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-4 shadow-sm text-purple-300">

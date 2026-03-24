@@ -42,8 +42,14 @@ class OrdenVenta extends Model
         'cliente_envia_archivo',
         'detalle_diseno',
         'brief_cliente',
-        'archivo_brief_path'
+        'archivo_brief_path',
+        'cotizacion_id'
     ];
+
+    public function cotizacion(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Cotizacion::class, 'cotizacion_id');
+    }
 
     public function disenoHistorial(): HasMany
     {

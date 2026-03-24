@@ -5,6 +5,7 @@ import {
     Package,
     Plus,
     Edit,
+    Trash2,
     Search,
     Filter,
     Scale,
@@ -157,6 +158,9 @@ export default function Index({ items = [] }) {
                                                     {item.es_insumo && (
                                                         <span className="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-orange-200">Uso Interno</span>
                                                     )}
+                                                    {!item.activo && (
+                                                        <span className="px-3 py-1.5 bg-slate-200 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-slate-300">Inactivo</span>
+                                                    )}
                                                 </div>
                                                 <div className="mt-3 flex gap-4">
                                                     {item.units?.length > 0 && (
@@ -206,12 +210,13 @@ export default function Index({ items = [] }) {
                                                     <button
                                                         onClick={() => {
                                                             if (confirm('¿Estás seguro de eliminar este artículo?')) {
-                                                                router.delete(route('items.destroy', item.id));
+                                                                router.delete(route('items.destroy', item.id), { preserveScroll: true });
                                                             }
                                                         }}
-                                                        className="p-4 bg-white text-slate-200 rounded-2xl hover:bg-red-50 hover:text-red-500 transition duration-500 border border-slate-100"
+                                                        className="p-4 bg-white text-slate-300 rounded-2xl hover:bg-red-50 hover:text-red-500 transition duration-500 border border-slate-100"
+                                                        title="Eliminar o desactivar artículo"
                                                     >
-                                                        <Plus size={22} className="rotate-45" />
+                                                        <Trash2 size={22} />
                                                     </button>
                                                 </div>
                                             </td>

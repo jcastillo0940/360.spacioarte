@@ -29,6 +29,8 @@ export default function Compras({ reportData, filtros }) {
                                 <th className="px-6 py-4 text-xs font-black uppercase tracking-widest">Fecha</th>
                                 <th className="px-6 py-4 text-xs font-black uppercase tracking-widest">Factura Prov.</th>
                                 <th className="px-6 py-4 text-xs font-black uppercase tracking-widest">Proveedor</th>
+                                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-right">Saldo</th>
+                                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-center">Estado</th>
                                 <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-right">Subtotal</th>
                                 <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-right">ITBMS</th>
                                 <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-right">Total</th>
@@ -40,6 +42,18 @@ export default function Compras({ reportData, filtros }) {
                                     <td className="px-6 py-4 text-sm font-medium text-slate-500">{item.fecha_emision}</td>
                                     <td className="px-6 py-4 text-sm font-black text-blue-600">{item.numero_factura_proveedor}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-900">{item.proveedor?.razon_social}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-slate-700 text-right">{format(item.saldo_pendiente)}</td>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className={`inline-flex px-2 py-1 rounded-full text-[10px] font-black uppercase ${
+                                            item.estado === 'Pagada'
+                                                ? 'bg-green-100 text-green-700'
+                                                : item.estado === 'Anulada'
+                                                    ? 'bg-red-100 text-red-700'
+                                                    : 'bg-orange-100 text-orange-700'
+                                        }`}>
+                                            {item.estado}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-400 text-right">{format(item.subtotal)}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-400 text-right">{format(item.itbms_total)}</td>
                                     <td className="px-6 py-4 text-sm font-black text-slate-900 text-right">{format(item.total)}</td>

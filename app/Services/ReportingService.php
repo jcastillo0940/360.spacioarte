@@ -9,6 +9,8 @@ use App\Models\Account;
 use App\Models\Item;
 use App\Models\Contacto;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 
 class ReportingService
 {
@@ -121,15 +123,191 @@ class ReportingService
     /**
      * Reporte: Valor de Inventario
      */
-    public function getValorInventario()
+    public function getValorInventario($inicio = null, $fin = null)
     {
-        return Item::whereIn('tipo', ['Inventariable', 'Consumible', 'Materia Prima', 'Producto Terminado'])
+        $items = Item::whereIn('tipo', ['Inventariable', 'Consumible', 'Materia Prima', 'Producto Terminado'])
             ->where('activo', true)
             ->select('id', 'codigo', 'nombre', 'stock_actual', 'costo_promedio')
             ->get()
             ->map(function($item) {
                 $item->valor_total = $item->stock_actual * $item->costo_promedio;
+                $item->entradas_periodo = 0;
+                $item->salidas_periodo = 0;
+                $item->neto_periodo = 0;
+                $item->movimientos_periodo = 0;
                 return $item;
+            });
+
+        if (!$inicio || !$fin) {
+            return [
+                'items' => $items,
+                'movimientos' => collect(),
+                'fuente_movimientos' => Schema::hasTable('inventory_movements') ? 'persistente' : 'reconstruido',
+                'resumen' => [
+                    'valor_total' => $items->sum('valor_total'),
+                    'entradas_periodo' => 0,
+                    'salidas_periodo' => 0,
+                    'movimientos_periodo' => 0,
+                ],
+            ];
+        }
+
+        $usarPersistente = Schema::hasTable('inventory_movements');
+        $movimientos = $usarPersistente
+            ? $this->getPersistentInventoryMovements($inicio, $fin)
+            : $this->buildInventoryMovements($inicio, $fin);
+        $statsByItem = $movimientos
+            ->groupBy('item_id')
+            ->map(function (Collection $group) {
+                $entradas = $group->where('naturaleza', 'Entrada')->sum('cantidad');
+                $salidas = $group->where('naturaleza', 'Salida')->sum('cantidad');
+
+                return [
+                    'entradas_periodo' => $entradas,
+                    'salidas_periodo' => $salidas,
+                    'neto_periodo' => $entradas - $salidas,
+                    'movimientos_periodo' => $group->count(),
+                ];
+            });
+
+        $items = $items->map(function ($item) use ($statsByItem) {
+            $stats = $statsByItem->get($item->id, [
+                'entradas_periodo' => 0,
+                'salidas_periodo' => 0,
+                'neto_periodo' => 0,
+                'movimientos_periodo' => 0,
+            ]);
+
+            $item->entradas_periodo = $stats['entradas_periodo'];
+            $item->salidas_periodo = $stats['salidas_periodo'];
+            $item->neto_periodo = $stats['neto_periodo'];
+            $item->movimientos_periodo = $stats['movimientos_periodo'];
+            return $item;
+        });
+
+        return [
+            'items' => $items,
+            'movimientos' => $movimientos->sortByDesc('fecha')->values(),
+            'fuente_movimientos' => $usarPersistente ? 'persistente' : 'reconstruido',
+            'resumen' => [
+                'valor_total' => $items->sum('valor_total'),
+                'entradas_periodo' => $movimientos->where('naturaleza', 'Entrada')->sum('cantidad'),
+                'salidas_periodo' => $movimientos->where('naturaleza', 'Salida')->sum('cantidad'),
+                'movimientos_periodo' => $movimientos->count(),
+            ],
+        ];
+    }
+
+    private function buildInventoryMovements($inicio, $fin): Collection
+    {
+        $recepcionesOrden = DB::table('recepciones_ordenes_detalles as detalle')
+            ->join('recepciones_ordenes as recepcion', 'detalle.recepcion_orden_id', '=', 'recepcion.id')
+            ->join('items', 'detalle.item_id', '=', 'items.id')
+            ->whereBetween('recepcion.fecha_recepcion', [$inicio, $fin])
+            ->selectRaw("
+                detalle.item_id,
+                items.codigo,
+                items.nombre,
+                recepcion.fecha_recepcion as fecha,
+                'Entrada' as naturaleza,
+                'Recepción OC' as origen,
+                recepcion.numero_recepcion as referencia,
+                (detalle.cantidad_recibida * COALESCE(detalle.factor_conversion_usado, 1)) as cantidad,
+                detalle.costo_unitario as costo_unitario
+            ")
+            ->get();
+
+        $recepcionesFactura = DB::table('compras_recepcion_detalles as detalle')
+            ->join('compras_recepciones as recepcion', 'detalle.recepcion_id', '=', 'recepcion.id')
+            ->join('items', 'detalle.item_id', '=', 'items.id')
+            ->whereBetween('recepcion.fecha_recepcion', [$inicio, $fin])
+            ->selectRaw("
+                detalle.item_id,
+                items.codigo,
+                items.nombre,
+                recepcion.fecha_recepcion as fecha,
+                'Entrada' as naturaleza,
+                'Recepción Factura' as origen,
+                recepcion.numero_recepcion as referencia,
+                detalle.cantidad_recepcionada_um_base as cantidad,
+                detalle.costo_unitario_um_compra as costo_unitario
+            ")
+            ->get();
+
+        $ventas = DB::table('factura_venta_detalles as detalle')
+            ->join('facturas_venta as factura', 'detalle.factura_venta_id', '=', 'factura.id')
+            ->join('items', 'detalle.item_id', '=', 'items.id')
+            ->whereBetween('factura.fecha_emision', [$inicio, $fin])
+            ->where('factura.estado', '!=', 'Anulada')
+            ->selectRaw("
+                detalle.item_id,
+                items.codigo,
+                items.nombre,
+                factura.fecha_emision as fecha,
+                'Salida' as naturaleza,
+                'Factura Venta' as origen,
+                factura.numero_factura as referencia,
+                detalle.cantidad as cantidad,
+                items.costo_promedio as costo_unitario
+            ")
+            ->get();
+
+        $devoluciones = DB::table('nota_credito_detalles as detalle')
+            ->join('notas_credito as nota', 'detalle.nota_credito_id', '=', 'nota.id')
+            ->join('items', 'detalle.item_id', '=', 'items.id')
+            ->whereBetween('nota.fecha', [$inicio, $fin])
+            ->where('nota.estado', 'Activa')
+            ->where('detalle.devolver_stock', true)
+            ->selectRaw("
+                detalle.item_id,
+                items.codigo,
+                items.nombre,
+                nota.fecha as fecha,
+                'Entrada' as naturaleza,
+                'Nota Crédito' as origen,
+                nota.numero_nota as referencia,
+                detalle.cantidad as cantidad,
+                items.costo_promedio as costo_unitario
+            ")
+            ->get();
+
+        return collect()
+            ->concat($recepcionesOrden)
+            ->concat($recepcionesFactura)
+            ->concat($ventas)
+            ->concat($devoluciones)
+            ->map(function ($movimiento) {
+                $movimiento->cantidad = (float) $movimiento->cantidad;
+                $movimiento->costo_unitario = (float) $movimiento->costo_unitario;
+                $movimiento->valor_movimiento = $movimiento->cantidad * $movimiento->costo_unitario;
+                return $movimiento;
+            });
+    }
+
+    private function getPersistentInventoryMovements($inicio, $fin): Collection
+    {
+        return DB::table('inventory_movements as movimiento')
+            ->join('items', 'movimiento.item_id', '=', 'items.id')
+            ->whereBetween('movimiento.fecha', [$inicio . ' 00:00:00', $fin . ' 23:59:59'])
+            ->selectRaw("
+                movimiento.item_id,
+                items.codigo,
+                items.nombre,
+                movimiento.fecha,
+                movimiento.naturaleza,
+                movimiento.origen,
+                movimiento.referencia,
+                movimiento.cantidad,
+                movimiento.costo_unitario,
+                movimiento.valor_movimiento
+            ")
+            ->orderByDesc('movimiento.fecha')
+            ->get()
+            ->map(function ($movimiento) {
+                $movimiento->cantidad = (float) $movimiento->cantidad;
+                $movimiento->costo_unitario = (float) $movimiento->costo_unitario;
+                $movimiento->valor_movimiento = (float) $movimiento->valor_movimiento;
+                return $movimiento;
             });
     }
 

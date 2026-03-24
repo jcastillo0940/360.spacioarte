@@ -81,6 +81,7 @@ export default function AuthenticatedLayout({ children }) {
             roles: ['Administrador Total', 'Vendedor', 'Atención al Cliente'],
             submenu: [
                 { name: 'Punto de Venta (POS)', href: route('pos.index') },
+                { name: 'Cotizaciones', href: route('cotizaciones.index') },
                 { name: 'Órdenes de Trabajo', href: route('ordenes.index') },
                 { name: 'Facturación Clientes', href: route('facturas.index') },
                 { name: 'Notas de Crédito', href: route('ventas.nc.index') },

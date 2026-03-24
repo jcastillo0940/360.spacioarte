@@ -13,7 +13,7 @@ class FacturaVenta extends Model
     protected $fillable = [
         'numero_factura', 'contacto_id', 'vendedor_id', 'orden_venta_id', 'pos_sesion_id',
         'fecha_emision', 'fecha_vencimiento', 'payment_term_id',
-        'subtotal', 'itbms_total', 'total', 'saldo_pendiente', 'estado'
+        'subtotal', 'itbms_total', 'total', 'saldo_pendiente', 'estado', 'cotizacion_id'
     ];
 
     public function cliente(): BelongsTo
@@ -34,6 +34,11 @@ class FacturaVenta extends Model
     public function ordenOriginal(): BelongsTo
     {
         return $this->belongsTo(OrdenVenta::class, 'orden_venta_id');
+    }
+
+    public function cotizacionOriginal(): BelongsTo
+    {
+        return $this->belongsTo(Cotizacion::class, 'cotizacion_id');
     }
     public function notasCredito(): HasMany
     {

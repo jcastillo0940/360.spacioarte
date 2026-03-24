@@ -34,7 +34,7 @@ export default function BarcodeScanner({ onScan, disabled = false, ordenId }) {
         setMensaje('🔍 Buscando...');
 
         try {
-            const response = await fetch(route('api.compras.recepciones.buscar-codigo'), {
+            const response = await fetch(route('compras.recepciones.buscar-codigo'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

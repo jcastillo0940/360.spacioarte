@@ -122,6 +122,15 @@ class Item extends Model
         return $query->where('tipo', 'Inventariable')
                      ->whereRaw('stock_actual <= stock_minimo');
     }
+
+    public function scopeMaterialesSoporte($query)
+    {
+        return $query->where('es_para_nesting', true)
+            ->where('activo', true)
+            ->where('requires_recipe', false)
+            ->whereIn('tipo', ['Materia Prima', 'Inventariable', 'Consumible']);
+    }
+
     /**
      * Relación con las recetas donde este item es el producto final.
      */
@@ -154,5 +163,10 @@ class Item extends Model
     public function recetasDondeEsInsumo(): HasMany
     {
         return $this->hasMany(Receta::class, 'insumo_id');
+    }
+
+    public function movimientosInventario(): HasMany
+    {
+        return $this->hasMany(InventoryMovement::class, 'item_id');
     }
 }

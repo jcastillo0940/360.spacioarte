@@ -140,6 +140,232 @@ export default function Create() {
         return capacidad > 0 ? capacidad : 0;
     };
 
+    const toNumber = (value) => {
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const normalizarUnidadMaterial = (unidad) => String(unidad || 'UND').trim().toUpperCase();
+
+    const convertirCmALaUnidadInventario = (material, largoCm) => {
+        const unidad = normalizarUnidadMaterial(material?.unidad_medida);
+
+        if (unidad === 'CM') return largoCm;
+        if (unidad === 'MT' || unidad === 'M') return largoCm / 100;
+        if (unidad === 'UND') return largoCm;
+
+        return largoCm;
+    };
+
+    const calcularCapacidadHoja = (item, material) => {
+        const anchoMaterial = toNumber(material?.ancho_imprimible || material?.ancho_cm || material?.ancho);
+        const largoMaterial = toNumber(material?.largo_imprimible || material?.largo_cm || material?.largo);
+        const anchoPieza = toNumber(item.ancho_imprimible);
+        const largoPieza = toNumber(item.largo_imprimible);
+        const sangrado = toNumber(item.sangrado);
+        const separacion = Math.max(toNumber(item.separacion_piezas), toNumber(material?.margen_seguridad_cm));
+
+        if (anchoMaterial <= 0 || largoMaterial <= 0 || anchoPieza <= 0 || largoPieza <= 0) return null;
+
+        const calcularOrientacion = (anchoTrabajo, largoTrabajo) => {
+            const piezasAncho = Math.floor((anchoMaterial - (sangrado * 2)) / (anchoTrabajo + separacion));
+            const piezasLargo = Math.floor((largoMaterial - (sangrado * 2)) / (largoTrabajo + separacion));
+            return Math.max(0, piezasAncho) * Math.max(0, piezasLargo);
+        };
+
+        let capacidad = calcularOrientacion(anchoPieza, largoPieza);
+
+        if (item.permite_rotacion) {
+            capacidad = Math.max(capacidad, calcularOrientacion(largoPieza, anchoPieza));
+        }
+
+        return capacidad > 0 ? capacidad : 0;
+    };
+
+    const calcularConsumoRollo = (item, material) => {
+        const anchoMaterial = toNumber(material?.ancho_imprimible || material?.ancho_cm || material?.ancho);
+        const anchoPieza = toNumber(item.ancho_imprimible);
+        const largoPieza = toNumber(item.largo_imprimible);
+        const sangrado = toNumber(item.sangrado);
+        const separacion = Math.max(toNumber(item.separacion_piezas), toNumber(material?.margen_seguridad_cm));
+        const cantidad = toNumber(item.cantidad);
+
+        if (anchoMaterial <= 0 || anchoPieza <= 0 || largoPieza <= 0 || cantidad <= 0) return null;
+
+        const calcularOrientacion = (anchoTrabajo, largoTrabajo) => {
+            const piezasPorFila = Math.floor((anchoMaterial - (sangrado * 2)) / (anchoTrabajo + separacion));
+            if (piezasPorFila <= 0) return null;
+
+            const filas = Math.ceil(cantidad / piezasPorFila);
+            const largoTotalCm = (filas * largoTrabajo) + (Math.max(0, filas - 1) * separacion) + (sangrado * 2);
+
+            return { piezasPorFila, filas, largoTotalCm };
+        };
+
+        let mejor = calcularOrientacion(anchoPieza, largoPieza);
+
+        if (item.permite_rotacion) {
+            const rotada = calcularOrientacion(largoPieza, anchoPieza);
+            if (rotada && (!mejor || rotada.largoTotalCm < mejor.largoTotalCm)) {
+                mejor = rotada;
+            }
+        }
+
+        if (!mejor) return null;
+
+        return {
+            capacidadPorLinea: mejor.piezasPorFila,
+            lineasNecesarias: mejor.filas,
+            largoMaterialCm: Number(mejor.largoTotalCm.toFixed(2)),
+            cantidadInventario: Number(convertirCmALaUnidadInventario(material, mejor.largoTotalCm).toFixed(4)),
+            unidadConsumo: normalizarUnidadMaterial(material?.unidad_medida || 'CM'),
+        };
+    };
+
+    const calcularConsumoMaterial = (item, material, maquina) => {
+        const cantidad = toNumber(item.cantidad);
+
+        if (!item.requires_recipe || !material || !maquina || cantidad <= 0) {
+            return {
+                capacidad_por_pliego: 0,
+                pliegos_necesarios: 0,
+                total_piezas_calculadas: cantidad,
+                usa_material_completo: !!item.usa_material_completo,
+                tipo_calculo_material: null,
+                cantidad_material_calculada: null,
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: null,
+            };
+        }
+
+        if (item.usa_material_completo) {
+            return {
+                capacidad_por_pliego: 1,
+                pliegos_necesarios: cantidad,
+                total_piezas_calculadas: cantidad,
+                usa_material_completo: true,
+                tipo_calculo_material: 'unidad_completa',
+                cantidad_material_calculada: Number(cantidad.toFixed(4)),
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: normalizarUnidadMaterial(material?.unidad_medida || 'UND'),
+            };
+        }
+
+        if (material.es_rollo) {
+            const consumoRollo = calcularConsumoRollo(item, material);
+
+            return {
+                capacidad_por_pliego: consumoRollo?.capacidadPorLinea || 0,
+                pliegos_necesarios: consumoRollo?.lineasNecesarias || 0,
+                total_piezas_calculadas: cantidad,
+                usa_material_completo: false,
+                tipo_calculo_material: 'rollo_lineal',
+                cantidad_material_calculada: consumoRollo?.cantidadInventario ?? null,
+                largo_material_calculado_cm: consumoRollo?.largoMaterialCm ?? null,
+                unidad_consumo_material: consumoRollo?.unidadConsumo || normalizarUnidadMaterial(material?.unidad_medida || 'CM'),
+            };
+        }
+
+        const capacidad = calcularCapacidadHoja(item, material);
+        const pliegos = capacidad > 0 ? Math.ceil(cantidad / capacidad) : 0;
+
+        return {
+            capacidad_por_pliego: capacidad || 0,
+            pliegos_necesarios: pliegos,
+            total_piezas_calculadas: cantidad,
+            usa_material_completo: false,
+            tipo_calculo_material: 'pliego',
+            cantidad_material_calculada: pliegos > 0 ? Number(pliegos.toFixed(4)) : null,
+            largo_material_calculado_cm: null,
+            unidad_consumo_material: normalizarUnidadMaterial(material?.unidad_medida || 'UND'),
+        };
+    };
+
+    const describirCalculoMaterial = (item) => {
+        if (item.tipo_calculo_material === 'unidad_completa') return 'Hoja completa por unidad';
+        if (item.tipo_calculo_material === 'rollo_lineal') return 'Rollo lineal';
+        if (item.tipo_calculo_material === 'pliego') return 'Pliego fijo';
+        return 'Sin calcular';
+    };
+
+    const filtrarSoportesCompatibles = (producto) => {
+        return (producto?.papeles_compatibles || []).filter((papel) =>
+            papel.es_para_nesting && !papel.requires_recipe && papel.id !== producto?.id
+        );
+    };
+
+    const getItemConfigStatus = (item) => {
+        if (!item.requires_recipe) {
+            return {
+                ready: true,
+                label: 'Sin produccion',
+                tone: 'bg-slate-100 text-slate-600 border-slate-200',
+                help: 'Este item no necesita maquina ni soporte para crear la orden.'
+            };
+        }
+
+        const soportes = item.papeles_compatibles || [];
+        const procesos = item.procesos_compatibles || [];
+        const hasProceso = !!item.proceso_id;
+        const hasMaterial = !!item.material_id;
+
+        if (procesos.length === 0) {
+            return {
+                ready: false,
+                label: 'Sin maquinas compatibles',
+                tone: 'bg-red-50 text-red-700 border-red-200',
+                help: 'Configura procesos compatibles en el producto antes de poder venderlo con produccion.'
+            };
+        }
+
+        if (soportes.length === 0) {
+            return {
+                ready: false,
+                label: 'Sin soportes compatibles',
+                tone: 'bg-red-50 text-red-700 border-red-200',
+                help: 'Configura al menos un papel o soporte compatible en el producto.'
+            };
+        }
+
+        if (!hasProceso && !hasMaterial) {
+            return {
+                ready: false,
+                label: 'Falta maquina y soporte',
+                tone: 'bg-amber-50 text-amber-700 border-amber-200',
+                help: 'Selecciona primero la maquina y luego el papel o soporte que se usara en produccion.'
+            };
+        }
+
+        if (!hasProceso) {
+            return {
+                ready: false,
+                label: 'Falta maquina',
+                tone: 'bg-amber-50 text-amber-700 border-amber-200',
+                help: 'Elige la maquina o proceso para este item.'
+            };
+        }
+
+        if (!hasMaterial) {
+            return {
+                ready: false,
+                label: 'Falta soporte',
+                tone: 'bg-amber-50 text-amber-700 border-amber-200',
+                help: 'Elige el papel, vinilo u otro soporte para este item.'
+            };
+        }
+
+        return {
+            ready: true,
+            label: 'Listo para producir',
+            tone: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            help: 'La orden ya tiene todo lo necesario para entrar a produccion.'
+        };
+    };
+
+    const itemsProduccion = data.items.filter(item => item.requires_recipe);
+    const itemsProduccionPendientes = itemsProduccion.filter(item => !getItemConfigStatus(item).ready);
+    const ordenListaParaProduccion = data.items.length > 0 && itemsProduccionPendientes.length === 0;
+
     const agregarItem = (producto) => {
         const existe = data.items.find(i => i.item_id === producto.id);
         if (existe) {
@@ -160,7 +386,7 @@ export default function Create() {
                 requires_recipe: producto.requires_recipe,
                 tipo_impresion: producto.tipo_impresion,
                 procesos_compatibles: producto.procesos_compatibles || [],
-                papeles_compatibles: producto.papeles_compatibles || [],
+                papeles_compatibles: filtrarSoportesCompatibles(producto),
                 ancho_imprimible: producto.ancho_imprimible,
                 largo_imprimible: producto.largo_imprimible,
                 sangrado: producto.sangrado,
@@ -168,7 +394,12 @@ export default function Create() {
                 permite_rotacion: producto.permite_rotacion,
                 // Secciones
                 proceso_id: producto.procesos_compatibles?.length === 1 ? producto.procesos_compatibles[0].id : '',
-                material_id: producto.papeles_compatibles?.length === 1 ? producto.papeles_compatibles[0].id : '',
+                material_id: filtrarSoportesCompatibles(producto).length === 1 ? filtrarSoportesCompatibles(producto)[0].id : '',
+                usa_material_completo: false,
+                tipo_calculo_material: null,
+                cantidad_material_calculada: null,
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: null,
                 pliegos_necesarios: 0,
                 capacidad_por_pliego: 0,
                 total_piezas_calculadas: 0
@@ -205,19 +436,23 @@ export default function Create() {
             if (item.requires_recipe && item.proceso_id && item.material_id) {
                 const papel = item.papeles_compatibles.find(p => p.id == item.material_id);
                 const maquina = item.procesos_compatibles.find(m => m.id == item.proceso_id);
-                const capacidad = calcularNesting(item, papel, maquina);
 
-                if (capacidad !== null) {
-                    const pliegos = Math.ceil(item.cantidad / capacidad);
-                    return {
-                        ...item,
-                        capacidad_por_pliego: capacidad,
-                        pliegos_necesarios: pliegos,
-                        total_piezas_calculadas: item.cantidad
-                    };
-                }
+                return {
+                    ...item,
+                    ...calcularConsumoMaterial(item, papel, maquina)
+                };
             }
-            return item;
+
+            return {
+                ...item,
+                capacidad_por_pliego: 0,
+                pliegos_necesarios: 0,
+                total_piezas_calculadas: item.cantidad,
+                tipo_calculo_material: null,
+                cantidad_material_calculada: null,
+                largo_material_calculado_cm: null,
+                unidad_consumo_material: null
+            };
         });
 
         // Solo actualizar si hay cambios reales en los cálculos de nesting para evitar re-renders infinitos
@@ -324,7 +559,7 @@ export default function Create() {
                                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                                 >
                                     <option value="">Sin vendedor</option>
-                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
                                 </select>
                             </div>
 
@@ -460,6 +695,39 @@ export default function Create() {
                                     Items en la Orden ({data.items.length})
                                 </h2>
 
+                                <div className="mb-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Paso 1</div>
+                                        <div className="font-black text-slate-900">Agrega el producto</div>
+                                        <p className="text-xs text-slate-500 mt-1">Busca el producto que vas a vender y define su cantidad.</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Paso 2</div>
+                                        <div className="font-black text-slate-900">Elige la maquina</div>
+                                        <p className="text-xs text-slate-500 mt-1">Si el item se fabrica, selecciona el proceso o maquina correcta.</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Paso 3</div>
+                                        <div className="font-black text-slate-900">Define el soporte</div>
+                                        <p className="text-xs text-slate-500 mt-1">Escoge papel, vinilo o marca material completo por unidad si aplica.</p>
+                                    </div>
+                                </div>
+
+                                {itemsProduccion.length > 0 && (
+                                    <div className={`mb-5 rounded-xl border p-4 ${itemsProduccionPendientes.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+                                        <div className={`font-black text-sm ${itemsProduccionPendientes.length > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                                            {itemsProduccionPendientes.length > 0
+                                                ? `Faltan configuraciones en ${itemsProduccionPendientes.length} item(s) de produccion`
+                                                : 'Todos los items de produccion estan completos'}
+                                        </div>
+                                        <p className={`text-xs mt-1 ${itemsProduccionPendientes.length > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                            {itemsProduccionPendientes.length > 0
+                                                ? 'Completa maquina y soporte en cada item antes de confirmar la orden.'
+                                                : 'La orden ya tiene todo lo necesario para entrar a produccion.'}
+                                        </p>
+                                    </div>
+                                )}
+
                                 {data.items.length === 0 ? (
                                     <div className="text-center py-12 text-slate-400">
                                         <svg className="w-16 h-16 mx-auto mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -485,6 +753,12 @@ export default function Create() {
                                                     <tr key={item.item_id}>
                                                         <td className="py-3">
                                                             <div className="font-medium text-slate-900">{item.nombre}</div>
+                                                            <div className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${getItemConfigStatus(item).tone}`}>
+                                                                {getItemConfigStatus(item).label}
+                                                            </div>
+                                                            <p className="mt-2 text-[11px] text-slate-500">
+                                                                {getItemConfigStatus(item).help}
+                                                            </p>
                                                             {item.requires_recipe && (
                                                                 <div className="mt-2 grid grid-cols-2 gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
                                                                     <div>
@@ -515,14 +789,44 @@ export default function Create() {
                                                                             {item.papeles_compatibles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                                                                         </select>
                                                                     </div>
-                                                                    {item.capacidad_por_pliego > 0 && (
-                                                                        <div className="col-span-2 flex items-center justify-between mt-1 px-1">
-                                                                            <div className="text-[9px] font-bold text-blue-600">
-                                                                                Capacidad: {item.capacidad_por_pliego} pzs/pg
+                                                                    <label className="col-span-2 flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-slate-200 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={!!item.usa_material_completo}
+                                                                            onChange={e => {
+                                                                                const nuevos = data.items.map(it => it.item_id === item.item_id ? { ...it, usa_material_completo: e.target.checked } : it);
+                                                                                setData('items', nuevos);
+                                                                            }}
+                                                                            className="rounded border-slate-300 text-blue-600"
+                                                                        />
+                                                                        <span className="text-[10px] font-black uppercase text-slate-600">
+                                                                            Consumir material completo por unidad
+                                                                        </span>
+                                                                    </label>
+                                                                    <div className="col-span-2 text-[10px] text-slate-500 px-1">
+                                                                        Activalo cuando cada pieza gasta un soporte completo, por ejemplo una gorra, una pieza unitaria o una hoja individual.
+                                                                    </div>
+                                                                    {(item.capacidad_por_pliego > 0 || item.cantidad_material_calculada) && (
+                                                                        <div className="col-span-2 mt-1 px-2 py-2 bg-white rounded-lg border border-slate-200 space-y-1">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="text-[9px] font-bold text-blue-600">
+                                                                                    Modo: {describirCalculoMaterial(item)}
+                                                                                </div>
+                                                                                <div className="text-[9px] font-black text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                                                                                    Consumo: {item.cantidad_material_calculada ?? 0} {item.unidad_consumo_material || 'UND'}
+                                                                                </div>
                                                                             </div>
-                                                                            <div className="text-[9px] font-black text-slate-900 bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200">
-                                                                                TOTAL PLIEGOS: {item.pliegos_necesarios}
-                                                                            </div>
+                                                                            {item.tipo_calculo_material === 'rollo_lineal' ? (
+                                                                                <div className="flex items-center justify-between text-[9px] font-bold text-slate-500">
+                                                                                    <span>Piezas por fila: {item.capacidad_por_pliego || 0}</span>
+                                                                                    <span>Largo estimado: {item.largo_material_calculado_cm || 0} cm</span>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="flex items-center justify-between text-[9px] font-bold text-slate-500">
+                                                                                    <span>Capacidad: {item.capacidad_por_pliego || 0} pzs</span>
+                                                                                    <span>Total material: {item.pliegos_necesarios || 0}</span>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -646,7 +950,7 @@ export default function Create() {
 
                             <button
                                 type="submit"
-                                disabled={processing || data.items.length === 0 || !data.contacto_id || (data.monto_abonado < (total * (minAnticipo / 100)) && total > 0)}
+                                disabled={processing || data.items.length === 0 || !data.contacto_id || !ordenListaParaProduccion || (data.monto_abonado < (total * (minAnticipo / 100)) && total > 0)}
                                 className="w-full bg-blue-600 text-white mt-6 py-4 rounded-xl font-black text-base hover:bg-blue-500 transition disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1 shadow-lg shadow-blue-900/20"
                             >
                                 <div className="flex items-center gap-2">

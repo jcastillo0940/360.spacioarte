@@ -10,6 +10,7 @@ use App\Models\Item;
 use App\Models\Contacto;
 use App\Models\TenantConfig;
 use App\Services\AccountingService;
+use App\Services\InventoryMovementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -213,7 +214,25 @@ class NotaCreditoController extends Controller
 
                     // 3. CONTROL DE INVENTARIO
                     if ($item->tipo === 'Inventariable' && $detail['devolver_stock'] && !$nota->es_merma) {
-                        $item->increment('stock_actual', $detail['cantidad']);
+                        $stockAnterior = floatval($item->stock_actual);
+                        $costoAnterior = floatval($item->costo_promedio);
+                        $stockPosterior = $stockAnterior + floatval($detail['cantidad']);
+                        $item->update(['stock_actual' => $stockPosterior]);
+
+                        app(InventoryMovementService::class)->record(
+                            item: $item,
+                            naturaleza: 'Entrada',
+                            cantidad: floatval($detail['cantidad']),
+                            costoUnitario: $costoAnterior,
+                            stockAnterior: $stockAnterior,
+                            stockPosterior: $stockPosterior,
+                            costoAnterior: $costoAnterior,
+                            costoPosterior: $costoAnterior,
+                            origen: 'Nota Credito',
+                            origenId: $nota->id,
+                            referencia: $nota->numero_nota,
+                            observacion: 'Devolucion de cliente con reintegro a inventario'
+                        );
                         
                         Log::info('Stock devuelto', [
                             'item' => $item->nombre,
@@ -413,7 +432,25 @@ class NotaCreditoController extends Controller
             // Reversar inventario
             foreach ($nota->detalles as $detalle) {
                 if ($detalle->devolver_stock && $detalle->item->tipo === 'Inventariable') {
-                    $detalle->item->decrement('stock_actual', $detalle->cantidad);
+                    $stockAnterior = floatval($detalle->item->stock_actual);
+                    $costoAnterior = floatval($detalle->item->costo_promedio);
+                    $stockPosterior = $stockAnterior - floatval($detalle->cantidad);
+                    $detalle->item->update(['stock_actual' => $stockPosterior]);
+
+                    app(InventoryMovementService::class)->record(
+                        item: $detalle->item,
+                        naturaleza: 'Salida',
+                        cantidad: floatval($detalle->cantidad),
+                        costoUnitario: $costoAnterior,
+                        stockAnterior: $stockAnterior,
+                        stockPosterior: $stockPosterior,
+                        costoAnterior: $costoAnterior,
+                        costoPosterior: $costoAnterior,
+                        origen: 'Anulacion Nota Credito',
+                        origenId: $nota->id,
+                        referencia: $nota->numero_nota,
+                        observacion: 'Reversion de entrada a inventario por anulacion de nota de credito'
+                    );
                 }
             }
 
