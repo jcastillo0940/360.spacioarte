@@ -24,6 +24,18 @@ class NotaCredito extends Model
         'total',
         'estado',
         'es_merma',
+        'fe_provider',
+        'fe_status',
+        'fe_legal_status',
+        'fe_document_id',
+        'fe_cufe',
+        'fe_issue_date',
+        'fe_last_sync_at',
+        'fe_public_url',
+        'fe_container_xml_url',
+        'fe_request_payload',
+        'fe_response_payload',
+        'fe_error_message',
     ];
 
     protected $casts = [
@@ -33,6 +45,10 @@ class NotaCredito extends Model
         'itbms_total' => 'decimal:2',
         'total' => 'decimal:2',
         'es_merma' => 'boolean',
+        'fe_issue_date' => 'datetime',
+        'fe_last_sync_at' => 'datetime',
+        'fe_request_payload' => 'array',
+        'fe_response_payload' => 'array',
     ];
 
     protected $attributes = [

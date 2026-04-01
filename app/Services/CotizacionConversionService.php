@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\DB;
 
 class CotizacionConversionService
 {
+    private const PANAMA_TIMEZONE = 'America/Panama';
+
     public function convertirAOrdenVenta(Cotizacion $cotizacion, array $extraData = []): OrdenVenta
     {
         if (in_array($cotizacion->estado, ['Convertido', 'Cancelado'], true)) {
@@ -86,6 +88,8 @@ class CotizacionConversionService
         }
 
         return DB::transaction(function () use ($cotizacion, $extraData) {
+            $fechaEmisionPanama = now(self::PANAMA_TIMEZONE)->toDateString();
+            $fechaVencimientoPanama = now(self::PANAMA_TIMEZONE)->addDays(30)->toDateString();
             $paymentTermId = $extraData['payment_term_id']
                 ?? $cotizacion->cliente?->payment_term_id
                 ?? PaymentTerm::query()->value('id');
@@ -99,9 +103,9 @@ class CotizacionConversionService
                 'cotizacion_id' => $cotizacion->id,
                 'contacto_id' => $cotizacion->contacto_id,
                 'vendedor_id' => $this->resolverVendedorId($cotizacion),
-                'fecha_emision' => $extraData['fecha_emision'] ?? now()->toDateString(),
+                'fecha_emision' => $extraData['fecha_emision'] ?? $fechaEmisionPanama,
                 'fecha_vencimiento' => $extraData['fecha_vencimiento']
-                    ?? ($cotizacion->fecha_vencimiento?->toDateString() ?? now()->addDays(30)->toDateString()),
+                    ?? ($cotizacion->fecha_vencimiento?->toDateString() ?? $fechaVencimientoPanama),
                 'payment_term_id' => $paymentTermId,
                 'subtotal' => $cotizacion->subtotal,
                 'itbms_total' => $cotizacion->itbms_total,

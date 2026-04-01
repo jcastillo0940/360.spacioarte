@@ -14,19 +14,15 @@ class NotaCreditoDetalle extends Model
         'item_id',
         'cantidad',
         'precio_unitario',
-        'subtotal',
-        'itbms',
-        'total',
-        'devolver_stock'
+        'total_item',
+        'devuelto_stock',
     ];
 
     protected $casts = [
         'cantidad' => 'decimal:2',
         'precio_unitario' => 'decimal:2',
-        'subtotal' => 'decimal:2',
-        'itbms' => 'decimal:2',
-        'total' => 'decimal:2',
-        'devolver_stock' => 'boolean'
+        'total_item' => 'decimal:2',
+        'devuelto_stock' => 'boolean',
     ];
 
     public function notaCredito(): BelongsTo
@@ -37,5 +33,15 @@ class NotaCreditoDetalle extends Model
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    public function getTotalAttribute(): string
+    {
+        return (string) ($this->attributes['total_item'] ?? '0.00');
+    }
+
+    public function getDevolverStockAttribute(): bool
+    {
+        return (bool) ($this->attributes['devuelto_stock'] ?? false);
     }
 }

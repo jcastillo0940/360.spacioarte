@@ -268,6 +268,9 @@ export default function Index({ auth }) {
                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Estado
                                             </th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                FE
+                                            </th>
                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Acciones
                                             </th>
@@ -312,6 +315,24 @@ export default function Index({ auth }) {
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     {getEstadoBadge(nota.estado)}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                                            nota.fe_status === 'FINISHED'
+                                                                ? 'bg-emerald-100 text-emerald-800'
+                                                                : nota.fe_status
+                                                                    ? 'bg-amber-100 text-amber-800'
+                                                                    : 'bg-slate-100 text-slate-700'
+                                                        }`}>
+                                                            {nota.fe_status || 'No emitida'}
+                                                        </span>
+                                                        {nota.fe_legal_status && (
+                                                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                                {nota.fe_legal_status}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <div className="flex justify-end gap-2">

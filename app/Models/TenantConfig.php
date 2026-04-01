@@ -22,9 +22,24 @@ class TenantConfig extends Model
         'multimoneda_activa',
         'factura_serie',
         'factura_inicio',
+        'fe_enabled',
+        'fe_auto_emit',
+        'fe_provider',
+        'fe_environment',
+        'fe_api_base_url',
+        'fe_jwt_token',
+        'fe_company_id',
+        'fe_office_id',
+        'fe_security_code',
+        'fe_portal_email',
+        'fe_portal_password',
+        'fe_invoice_range_start',
+        'fe_invoice_range_end',
+        'fe_test_ruc',
         'factura_terminos_condiciones',
         'factura_plantilla',
         'factura_formato_impresion',
+        'factura_termica_ancho_mm',
         'mostrar_valores_letras',
         'smtp_host',
         'smtp_port',
@@ -52,6 +67,12 @@ class TenantConfig extends Model
         'diseno_revisiones_gratuitas',
         'diseno_cobro_automatico',
         'anticipo_minimo_porcentaje'
+    ];
+
+    protected $casts = [
+        'fe_enabled' => 'boolean',
+        'fe_auto_emit' => 'boolean',
+        'factura_termica_ancho_mm' => 'integer',
     ];
 
     /**

@@ -13,6 +13,12 @@ class Account extends Model
         'permite_movimiento', 'saldo_inicial', 'descripcion', 'activo'
     ];
 
+    protected $casts = [
+        'permite_movimiento' => 'boolean',
+        'activo' => 'boolean',
+        'saldo_inicial' => 'decimal:2',
+    ];
+
     public function parent(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'parent_id');

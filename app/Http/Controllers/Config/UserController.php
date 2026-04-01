@@ -13,6 +13,13 @@ class UserController extends Controller
 {
     public function index()
     {
+        if (request()->is('api/*') || request()->wantsJson()) {
+            return response()->json([
+                'users' => User::with('roles')->orderBy('name')->get(),
+                'roles' => Role::all(),
+            ]);
+        }
+
         return Inertia::render('Config/Usuarios/Index', [
             'users' => User::with('roles')->get(),
             'roles' => Role::all()

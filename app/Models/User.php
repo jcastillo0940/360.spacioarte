@@ -35,4 +35,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(RecepcionOrden::class, 'user_id');
     }
+
+    public function crmLeads()
+    {
+        return $this->hasMany(CrmLead::class, 'owner_id');
+    }
+
+    public function crmActivities()
+    {
+        return $this->hasMany(CrmActivity::class, 'user_id');
+    }
 }

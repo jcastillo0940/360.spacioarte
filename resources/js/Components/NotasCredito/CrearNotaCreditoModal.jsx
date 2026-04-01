@@ -157,12 +157,14 @@ export default function CrearNotaCreditoModal({
         
         try {
             const payload = {
+                es_manual: false,
                 factura_venta_id: facturaId,
                 tipo_nota: formData.tipo_nota,
                 motivo: formData.motivo,
                 items: itemsConCantidad.map(item => ({
                     item_id: item.item_id,
                     cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
                     devolver_stock: item.devolver_stock
                 }))
             };
@@ -171,6 +173,8 @@ export default function CrearNotaCreditoModal({
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
                 body: JSON.stringify(payload)

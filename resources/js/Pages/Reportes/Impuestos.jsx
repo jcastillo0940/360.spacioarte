@@ -6,7 +6,7 @@ import { ShieldCheck, TrendingUp, TrendingDown, Landmark } from 'lucide-react';
 
 export default function Impuestos({ reportData, filtros }) {
     const handleFilter = (newFilters) => {
-        router.get(route('reportes.contables.impuestos'), newFilters, { preserveState: true });
+        router.get(route('reportes.contabilidad.impuestos'), newFilters, { preserveState: true });
     };
 
     const format = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v || 0);

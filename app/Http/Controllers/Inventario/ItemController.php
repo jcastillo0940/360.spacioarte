@@ -68,6 +68,8 @@ class ItemController extends Controller
             'stock_maximo' => 'nullable|numeric|min:0',
             'tax_id' => 'required|exists:taxes,id',
             'categoria' => 'nullable|string|max:100',
+            'fe_codigo_producto' => 'nullable|string|max:50',
+            'fe_codigo_unidad' => 'nullable|string|max:20',
             'category_id' => 'nullable|exists:item_categories,id',
             'unidad_medida' => 'required|string|max:20',
             'ancho_cm' => 'nullable|numeric|min:0',
@@ -162,6 +164,8 @@ class ItemController extends Controller
             'stock_maximo' => 'nullable|numeric|min:0',
             'tax_id' => 'required|exists:taxes,id',
             'categoria' => 'nullable|string|max:100',
+            'fe_codigo_producto' => 'nullable|string|max:50',
+            'fe_codigo_unidad' => 'nullable|string|max:20',
             'category_id' => 'nullable|exists:item_categories,id',
             'unidad_medida' => 'required|string|max:20',
             'ancho_cm' => 'nullable|numeric|min:0',
@@ -299,6 +303,8 @@ class ItemController extends Controller
         $validated['item_base_id'] = $validated['item_base_id'] ?? null;
         $validated['familia_produccion_id'] = $validated['familia_produccion_id'] ?? null;
         $validated['category_id'] = $validated['category_id'] ?? null;
+        $validated['fe_codigo_producto'] = filled($validated['fe_codigo_producto'] ?? null) ? trim($validated['fe_codigo_producto']) : null;
+        $validated['fe_codigo_unidad'] = filled($validated['fe_codigo_unidad'] ?? null) ? strtoupper(trim($validated['fe_codigo_unidad'])) : null;
 
         if (!empty($validated['category_id'])) {
             $categoria = ItemCategory::find($validated['category_id']);
@@ -399,6 +405,10 @@ class ItemController extends Controller
 
         if ($validated['requires_recipe'] && !empty($validated['item_base_id']) && $validated['item_base_id'] === ($validated['papeles_ids'][0] ?? null)) {
             $errors['item_base_id'] = 'El material base del producto no debe ser el mismo soporte de impresion o nesting.';
+        }
+
+        if (($validated['tipo'] ?? null) !== 'Servicio' && empty($validated['fe_codigo_producto'])) {
+            $errors['fe_codigo_producto'] = 'Define el codigo fiscal del producto para facturacion electronica Panama.';
         }
 
         if (!empty($validated['procesos_ids'])) {

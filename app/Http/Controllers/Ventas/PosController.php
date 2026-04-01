@@ -18,13 +18,38 @@ use App\Models\TenantConfig;
 use App\Models\BankTransaction;
 use App\Services\AccountingService;
 use App\Services\Production\InventoryService;
+use App\Services\Payments\InvoicePaymentAllocator;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PosController extends Controller
 {
+    private function money($value): float
+    {
+        return round((float) $value, 2);
+    }
+
+    private function formatPendingInvoice(FacturaVenta $factura): array
+    {
+        return [
+            'id' => $factura->id,
+            'numero_factura' => $factura->numero_factura,
+            'fecha_emision' => optional($factura->fecha_emision)->format('Y-m-d'),
+            'fecha_vencimiento' => optional($factura->fecha_vencimiento)->format('Y-m-d'),
+            'estado' => $factura->estado,
+            'saldo_pendiente' => $this->money($factura->saldo_pendiente),
+            'total' => $this->money($factura->total),
+            'cliente' => $factura->cliente ? [
+                'id' => $factura->cliente->id,
+                'razon_social' => $factura->cliente->razon_social,
+                'identificacion' => $factura->cliente->identificacion,
+            ] : null,
+        ];
+    }
+
     public function index()
     {
         $usuario = auth()->user();
@@ -44,6 +69,14 @@ class PosController extends Controller
             'sesion' => $sesionActiva,
             'items' => Item::where('activo', true)->where('es_insumo', false)->limit(20)->get(),
             'bancos' => BankAccount::all(),
+            'clientesConSaldo' => Contacto::query()
+                ->whereHas('facturas', function ($query) {
+                    $query->where('saldo_pendiente', '>', 0)
+                        ->whereNotIn('estado', ['Anulada', 'Cancelada']);
+                })
+                ->orderBy('razon_social')
+                ->limit(20)
+                ->get(),
             'metodosPago' => PosMetodoPago::where('activo', true)->get(),
             'paymentTerms' => PaymentTerm::all()
         ]);
@@ -107,6 +140,74 @@ class PosController extends Controller
         return response()->json($ordenes);
     }
 
+    public function searchCustomers(Request $request)
+    {
+        $q = trim((string) $request->q);
+
+        $clientes = Contacto::query()
+            ->where(function ($query) use ($q) {
+                $query->where('razon_social', 'like', "%{$q}%")
+                    ->orWhere('identificacion', 'like', "%{$q}%");
+            })
+            ->whereHas('facturas', function ($query) {
+                $query->where('saldo_pendiente', '>', 0)
+                    ->whereNotIn('estado', ['Anulada', 'Cancelada']);
+            })
+            ->limit(20)
+            ->get();
+
+        return response()->json($clientes);
+    }
+
+    public function customerPendingInvoices(Contacto $contacto, InvoicePaymentAllocator $allocator)
+    {
+        $facturas = $allocator->getPendingInvoicesForContact($contacto->id)
+            ->map(fn (FacturaVenta $factura) => $this->formatPendingInvoice($factura))
+            ->values();
+
+        return response()->json([
+            'contacto' => $contacto,
+            'facturas' => $facturas,
+        ]);
+    }
+
+    public function processInvoicePayment(Request $request, InvoicePaymentAllocator $allocator)
+    {
+        $request->validate([
+            'contacto_id' => 'required|exists:contactos,id',
+            'facturas_ids' => 'nullable|array',
+            'facturas_ids.*' => 'exists:facturas_venta,id',
+            'metodo_pago' => 'required|string',
+            'monto_pago' => 'required|numeric|min:0.01',
+            'bank_account_id' => 'required|exists:bank_accounts,id',
+            'referencia' => 'nullable|string',
+        ]);
+
+        $sesion = PosSesion::where('user_id', auth()->id())
+            ->where('estado', 'Abierta')
+            ->firstOrFail();
+
+        $result = $allocator->apply([
+            'contacto_id' => $request->contacto_id,
+            'facturas_ids' => $request->facturas_ids ?? [],
+            'bank_account_id' => $request->bank_account_id,
+            'monto_total' => $request->monto_pago,
+            'fecha_pago' => now()->toDateString(),
+            'metodo_pago' => $request->metodo_pago,
+            'referencia' => $request->referencia,
+            'pos_sesion_id' => $sesion->id,
+            'notas' => 'Cobro POS por facturas pendiente(s)',
+        ]);
+
+        return response()->json([
+            'message' => 'Cobro aplicado por FIFO',
+            'numero_recibo' => $result['numero_recibo'],
+            'payment_batch_uuid' => $result['payment_batch_uuid'],
+            'aplicaciones' => $result['aplicaciones'],
+            'monto_total' => $this->money($result['monto_total'] ?? 0),
+        ]);
+    }
+
     public function processSale(Request $request)
     {
         $request->validate([
@@ -129,11 +230,11 @@ class PosController extends Controller
             $itbms = 0;
             
             foreach ($request->items as $item) {
-                $lineaSubtotal = ($item['precio'] * $item['cantidad']) - ($item['descuento'] ?? 0);
-                $subtotal += $lineaSubtotal;
-                $itbms += $lineaSubtotal * (7/100); // Simplificado 7%
+                $lineaSubtotal = $this->money(($item['precio'] * $item['cantidad']) - ($item['descuento'] ?? 0));
+                $subtotal = $this->money($subtotal + $lineaSubtotal);
+                $itbms = $this->money($itbms + ($lineaSubtotal * (7 / 100)));
             }
-            $total = round($subtotal + $itbms, 2);
+            $total = $this->money($subtotal + $itbms);
 
             $factura = FacturaVenta::create([
                 'numero_factura' => 'POS-' . time(), 
@@ -141,24 +242,24 @@ class PosController extends Controller
                 'fecha_emision' => now(),
                 'fecha_vencimiento' => now(),
                 'payment_term_id' => 1, // Contado
-                'subtotal' => $subtotal,
-                'itbms_total' => $itbms,
-                'total' => $total,
-                'saldo_pendiente' => max(0, $total - $request->monto_pago),
-                'estado' => $request->monto_pago >= ($total - 0.01) ? 'Pagada' : 'Abierta',
+                'subtotal' => $this->money($subtotal),
+                'itbms_total' => $this->money($itbms),
+                'total' => $this->money($total),
+                'saldo_pendiente' => $this->money(max(0, $total - $request->monto_pago)),
+                'estado' => $this->money($request->monto_pago) >= ($total - 0.01) ? 'Pagada' : 'Abierta',
                 'pos_sesion_id' => $sesion->id
             ]);
 
             // 2. Crear Detalles y actualizar stock
             $inventoryService = new InventoryService();
             foreach ($request->items as $item) {
-                $lineaSubtotal = ($item['precio'] * $item['cantidad']) - ($item['descuento'] ?? 0);
+                $lineaSubtotal = $this->money(($item['precio'] * $item['cantidad']) - ($item['descuento'] ?? 0));
                 $factura->detalles()->create([
                     'item_id' => $item['id'],
                     'cantidad' => $item['cantidad'],
                     'precio_unitario' => $item['precio'],
                     'porcentaje_itbms' => 7.00,
-                    'total_item' => round($lineaSubtotal * 1.07, 2)
+                    'total_item' => $this->money($lineaSubtotal * 1.07)
                 ]);
 
                 // Descontar stock (Maneja recetas automáticamente)
@@ -304,5 +405,37 @@ class PosController extends Controller
         ];
 
         return response()->json($resumen);
+    }
+
+    public function generarCorteXPdf()
+    {
+        $sesion = PosSesion::with(['movimientos', 'pagos', 'caja', 'cajero'])
+            ->where('user_id', auth()->id())
+            ->where('estado', 'Abierta')
+            ->firstOrFail();
+
+        $resumen = [
+            'apertura' => $this->money($sesion->monto_apertura),
+            'ventas_efectivo' => $this->money($sesion->pagos()->where('metodo_pago', 'Efectivo')->sum('monto_pagado')),
+            'ventas_tarjeta' => $this->money($sesion->pagos()->where('metodo_pago', 'Tarjeta')->sum('monto_pagado')),
+            'ventas_transferencia' => $this->money($sesion->pagos()->where('metodo_pago', 'Transferencia')->sum('monto_pagado')),
+            'entradas' => $this->money($sesion->movimientos()->where('tipo', 'Entrada')->sum('monto')),
+            'salidas' => $this->money($sesion->movimientos()->where('tipo', 'Salida')->sum('monto')),
+        ];
+
+        $esperado = $this->money(($resumen['apertura'] + $resumen['ventas_efectivo'] + $resumen['entradas']) - $resumen['salidas']);
+
+        $config = TenantConfig::first();
+        $paperWidthPoints = 80 * 2.83465;
+        $paperHeightPoints = 560;
+
+        $pdf = Pdf::loadView('pdf.pos-corte-x', [
+            'sesion' => $sesion,
+            'resumen' => $resumen,
+            'esperado' => $esperado,
+            'config' => $config,
+        ])->setPaper([0, 0, $paperWidthPoints, $paperHeightPoints], 'portrait');
+
+        return $pdf->stream("corte-x-{$sesion->id}.pdf");
     }
 }

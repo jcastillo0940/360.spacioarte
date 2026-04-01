@@ -16,6 +16,11 @@ class AsientoDetalle extends Model
         'credito'
     ];
 
+    protected $casts = [
+        'debito' => 'decimal:2',
+        'credito' => 'decimal:2',
+    ];
+
     public function asiento(): BelongsTo
     {
         return $this->belongsTo(Asiento::class);

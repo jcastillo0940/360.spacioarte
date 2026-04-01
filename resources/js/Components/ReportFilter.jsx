@@ -1,8 +1,29 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Search, FileDown } from 'lucide-react';
+import { Calendar, FileDown } from 'lucide-react';
 
 const ReportFilter = ({ filters, onFilter }) => {
+    const exportReport = (format) => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('export_pdf');
+        url.searchParams.delete('export_csv');
+        url.searchParams.set('export', format);
+
+        if (filters.fecha_inicio) {
+            url.searchParams.set('fecha_inicio', filters.fecha_inicio);
+        }
+
+        if (filters.fecha_fin) {
+            url.searchParams.set('fecha_fin', filters.fecha_fin);
+        }
+
+        if (filters.year) {
+            url.searchParams.set('year', filters.year);
+        }
+
+        window.open(url.toString(), '_blank');
+    };
+
     const handlePreset = (type) => {
         const now = new Date();
         let start, end;
@@ -101,17 +122,18 @@ const ReportFilter = ({ filters, onFilter }) => {
 
                 <div className="flex gap-2">
                     <button
-                        onClick={() => {
-                            const url = new URL(window.location.href);
-                            url.searchParams.set('export_pdf', '1');
-                            url.searchParams.set('fecha_inicio', filters.fecha_inicio);
-                            url.searchParams.set('fecha_fin', filters.fecha_fin);
-                            window.open(url.toString(), '_blank');
-                        }}
+                        onClick={() => exportReport('pdf')}
                         className="p-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2"
                     >
                         <FileDown size={18} />
                         PDF
+                    </button>
+                    <button
+                        onClick={() => exportReport('csv')}
+                        className="p-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition flex items-center gap-2"
+                    >
+                        <FileDown size={18} />
+                        CSV
                     </button>
                 </div>
             </div>

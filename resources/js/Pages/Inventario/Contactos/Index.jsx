@@ -13,6 +13,7 @@ export default function Index() {
         tipo_identificacion: 'RUC',
         identificacion: '',
         dv: '',
+        requiere_factura_electronica: false,
         direccion: '',
         telefono: '',
         email: '',
@@ -201,6 +202,23 @@ export default function Index() {
                                 </div>
                             </div>
 
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                <label className="flex items-start gap-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={!!data.requiere_factura_electronica}
+                                        onChange={e => setData('requiere_factura_electronica', e.target.checked)}
+                                        className="mt-1 rounded border-slate-300"
+                                    />
+                                    <div>
+                                        <span className="text-sm font-bold text-amber-900">Requiere factura electrÃ³nica</span>
+                                        <p className="text-xs text-amber-800 mt-1">
+                                            Si este cliente usa RUC, completa tambiÃ©n el DV para evitar rechazos de DGI.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Términos de Pago</label>
                                 <select 
@@ -300,6 +318,13 @@ export default function Index() {
                                                             {contacto.identificacion}
                                                             {contacto.dv && `-${contacto.dv}`}
                                                         </span>
+                                                        {contacto.requiere_factura_electronica && (
+                                                            <div className="mt-1">
+                                                                <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                                                                    FE
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="text-sm text-slate-600">{contacto.email || '-'}</div>

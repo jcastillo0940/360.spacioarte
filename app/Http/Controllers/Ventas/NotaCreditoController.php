@@ -10,6 +10,7 @@ use App\Models\Item;
 use App\Models\Contacto;
 use App\Models\TenantConfig;
 use App\Services\AccountingService;
+use App\Services\ElectronicInvoicing\AlanubePanamaService;
 use App\Services\InventoryMovementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 class NotaCreditoController extends Controller
 {
     /**
-     * Lista todas las notas de crédito
+     * Lista todas las notas de crÃƒÂ©dito
      */
     public function index()
     {
@@ -39,7 +40,7 @@ class NotaCreditoController extends Controller
     }
 
     /**
-     * Muestra el detalle de una nota de crédito
+     * Muestra el detalle de una nota de crÃƒÂ©dito
      */
     public function show($id)
     {
@@ -55,6 +56,51 @@ class NotaCreditoController extends Controller
         ]);
     }
 
+    public function emitirElectronica(NotaCredito $nota, AlanubePanamaService $alanube)
+    {
+        if ($this->noteAlreadyIssued($nota)) {
+            return redirect()->route('ventas.nc.show', $nota)->withErrors([
+                'error' => 'La nota de credito ya fue emitida electronicamente y no puede reenviarse.',
+            ]);
+        }
+
+        try {
+            $alanube->emitirNotaCredito($nota);
+
+            return redirect()->route('ventas.nc.show', $nota)->with('success', 'Nota de credito electronica enviada a Alanube correctamente.');
+        } catch (\Throwable $e) {
+            return redirect()->route('ventas.nc.show', $nota)->withErrors([
+                'error' => 'No se pudo emitir la nota de credito electronica: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function sincronizarElectronica(NotaCredito $nota, AlanubePanamaService $alanube)
+    {
+        try {
+            $alanube->sincronizarNotaCredito($nota);
+
+            if (request()->wantsJson()) {
+                return response()->json([
+                    'message' => 'Estado de nota de credito electronica actualizado.',
+                    'data' => $nota->fresh(['factura.cliente', 'cliente', 'detalles.item']),
+                ]);
+            }
+
+            return redirect()->route('ventas.nc.show', $nota)->with('success', 'Estado de nota de credito electronica actualizado.');
+        } catch (\Throwable $e) {
+            if (request()->wantsJson()) {
+                return response()->json([
+                    'message' => 'No se pudo consultar el estado electronico: ' . $e->getMessage(),
+                ], 422);
+            }
+
+            return redirect()->route('ventas.nc.show', $nota)->withErrors([
+                'error' => 'No se pudo consultar el estado electronico: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * Renderiza formulario para crear NC Manual (sin factura en sistema)
      */
@@ -64,12 +110,12 @@ class NotaCreditoController extends Controller
     }
 
     /**
-     * Registra una Nota de Crédito (Manual o desde Factura)
+     * Registra una Nota de CrÃƒÂ©dito (Manual o desde Factura)
      */
     public function store(Request $request)
     {
         try {
-            Log::info('Inicio de creación de NC', [
+            Log::info('Inicio de creaciÃƒÂ³n de NC', [
                 'data' => $request->all(),
                 'user_id' => auth()->id()
             ]);
@@ -96,15 +142,15 @@ class NotaCreditoController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.item_id' => 'required|exists:items,id',
                 'items.*.cantidad' => 'required|numeric|min:0.01',
-                'items.*.precio_unitario' => 'required|numeric|min:0',
+                'items.*.precio_unitario' => 'nullable|numeric|min:0',
                 'items.*.devolver_stock' => 'required|boolean',
             ], [
-                'factura_manual_ref.required_if' => 'El número de factura manual es obligatorio',
+                'factura_manual_ref.required_if' => 'El nÃƒÂºmero de factura manual es obligatorio',
                 'fecha_factura_original.required_if' => 'La fecha de la factura original es obligatoria',
                 'contacto_id.required_if' => 'Debe seleccionar un cliente',
                 'contacto_id.exists' => 'El cliente seleccionado no existe',
                 'sucursal_id.exists' => 'La sucursal seleccionada no existe',
-                'tipo_nota.required' => 'Debe seleccionar el tipo de nota de crédito',
+                'tipo_nota.required' => 'Debe seleccionar el tipo de nota de crÃƒÂ©dito',
                 'motivo.required' => 'El motivo es obligatorio',
                 'items.required' => 'Debe agregar al menos un producto',
                 'items.min' => 'Debe agregar al menos un producto',
@@ -114,7 +160,7 @@ class NotaCreditoController extends Controller
                 $config = TenantConfig::first();
                 
                 if (!$config) {
-                    throw new \Exception("No se encontró la configuración del tenant. Contacte al administrador.");
+                    throw new \Exception("No se encontrÃƒÂ³ la configuraciÃƒÂ³n del tenant. Contacte al administrador.");
                 }
 
                 $factura = null;
@@ -133,7 +179,7 @@ class NotaCreditoController extends Controller
                     
                     if ($factura->saldo_pendiente <= 0) {
                         throw ValidationException::withMessages([
-                            'factura_venta_id' => 'La factura no tiene saldo pendiente para aplicar nota de crédito.'
+                            'factura_venta_id' => 'La factura no tiene saldo pendiente para aplicar nota de crÃƒÂ©dito.'
                         ]);
                     }
 
@@ -143,7 +189,7 @@ class NotaCreditoController extends Controller
                     ]);
                 }
 
-                // 1. Crear cabecera de la Nota de Crédito
+                // 1. Crear cabecera de la Nota de CrÃƒÂ©dito
                 $nota = NotaCredito::create([
                     'numero_nota' => $this->generateNCNumber($config),
                     'factura_venta_id' => $factura->id ?? null,
@@ -170,17 +216,17 @@ class NotaCreditoController extends Controller
                 $subtotalNC = 0;
                 $itbmsNC = 0;
 
-                // 2. Procesar ítems
+                // 2. Procesar ÃƒÂ­tems
                 foreach ($validated['items'] as $detail) {
                     $item = Item::lockForUpdate()->findOrFail($detail['item_id']);
 
-                    // Validación: Si viene de factura, verificar que no se devuelva más de lo facturado
+                    // ValidaciÃƒÂ³n: Si viene de factura, verificar que no se devuelva mÃƒÂ¡s de lo facturado
                     if ($factura) {
                         $lineaOriginal = $factura->detalles()->where('item_id', $item->id)->first();
                         
                         if (!$lineaOriginal) {
                             throw ValidationException::withMessages([
-                                'items' => "El ítem '{$item->nombre}' no existe en la factura original."
+                                'items' => "El ÃƒÂ­tem '{$item->nombre}' no existe en la factura original."
                             ]);
                         }
 
@@ -195,9 +241,13 @@ class NotaCreditoController extends Controller
                         }
                     }
 
-                    $precioUnitario = $detail['precio_unitario'];
-                    $totalLinea = $detail['cantidad'] * $precioUnitario;
-                    $tasaITBMS = $item->tax->tasa ?? 0;
+                    $precioUnitario = isset($detail['precio_unitario'])
+                        ? (float) $detail['precio_unitario']
+                        : (float) ($lineaOriginal->precio_unitario ?? $item->precio_venta ?? 0);
+                    $totalLinea = (float) $detail['cantidad'] * $precioUnitario;
+                    $tasaITBMS = $factura && isset($lineaOriginal)
+                        ? (float) ($lineaOriginal->porcentaje_itbms ?? 0)
+                        : (float) ($item->tax->tasa ?? 0);
                     $itbmsLinea = $totalLinea * ($tasaITBMS / 100);
 
                     // Crear detalle de NC
@@ -206,10 +256,8 @@ class NotaCreditoController extends Controller
                         'item_id' => $item->id,
                         'cantidad' => $detail['cantidad'],
                         'precio_unitario' => $precioUnitario,
-                        'subtotal' => $totalLinea,
-                        'itbms' => $itbmsLinea,
-                        'total' => $totalLinea + $itbmsLinea,
-                        'devolver_stock' => $detail['devolver_stock'],
+                        'total_item' => $totalLinea + $itbmsLinea,
+                        'devuelto_stock' => $detail['devolver_stock'],
                     ]);
 
                     // 3. CONTROL DE INVENTARIO
@@ -273,7 +321,7 @@ class NotaCreditoController extends Controller
                         'nota_id' => $nota->id,
                         'error' => $e->getMessage()
                     ]);
-                    // Se lanza excepción para asegurar integridad del proceso
+                    // Se lanza excepciÃƒÂ³n para asegurar integridad del proceso
                     throw new \Exception("Error contable: " . $e->getMessage());
                 }
 
@@ -289,7 +337,7 @@ class NotaCreditoController extends Controller
                     ]);
                 }
 
-                $mensaje = "Nota de Crédito {$nota->numero_nota} creada exitosamente.";
+                $mensaje = "Nota de CrÃƒÂ©dito {$nota->numero_nota} creada exitosamente.";
 
                 if (request()->wantsJson()) {
                     return response()->json([
@@ -302,9 +350,9 @@ class NotaCreditoController extends Controller
             });
             
         } catch (ValidationException $e) {
-            Log::warning('Error de validación en NC', ['errors' => $e->errors()]);
+            Log::warning('Error de validaciÃƒÂ³n en NC', ['errors' => $e->errors()]);
             if (request()->wantsJson()) {
-                return response()->json(['message' => 'Error de validación', 'errors' => $e->errors()], 422);
+                return response()->json(['message' => 'Error de validaciÃƒÂ³n', 'errors' => $e->errors()], 422);
             }
             throw $e;
         } catch (\Exception $e) {
@@ -320,29 +368,32 @@ class NotaCreditoController extends Controller
     }
 
     /**
-     * Genera asientos contables según tipo de NC
+     * Genera asientos contables segÃƒÂºn tipo de NC
      */
     private function generarAsientosContables($nota, $config)
     {
+        $ctaDevolucionesId = $this->resolveAccountId($config->cta_devoluciones_id ?? null, $config->cta_ventas_id ?? null, 'devoluciones/ventas');
+        $ctaItbmsId = $this->resolveAccountId($config->cta_itbms_id ?? null, null, 'ITBMS');
+        $ctaCxcId = $this->resolveAccountId($config->cta_cxc_id ?? null, null, 'cuentas por cobrar');
         $lineas = [];
         $descripcion = $this->generarDescripcionAsiento($nota);
 
-        // Débitos
+        // DÃƒÂ©bitos
         $lineas[] = [
-            'account_id' => $config->cta_devoluciones_id ?? $config->cta_ventas_id,
+            'account_id' => $ctaDevolucionesId,
             'debito' => $nota->subtotal,
             'credito' => 0
         ];
 
         $lineas[] = [
-            'account_id' => $config->cta_itbms_id,
+            'account_id' => $ctaItbmsId,
             'debito' => $nota->itbms_total,
             'credito' => 0
         ];
 
-        // Crédito (CXC)
+        // CrÃƒÂ©dito (CXC)
         $lineas[] = [
-            'account_id' => $config->cta_cxc_id,
+            'account_id' => $ctaCxcId,
             'debito' => 0,
             'credito' => $nota->total
         ];
@@ -357,13 +408,15 @@ class NotaCreditoController extends Controller
             }
 
             if ($costoMerma > 0) {
+                $ctaGastoMermaId = $this->resolveAccountId($config->cta_gasto_merma_id ?? null, $config->cta_ventas_id ?? null, 'gasto de merma/ventas');
+                $ctaInventarioId = $this->resolveAccountId($config->cta_inventario_id ?? null, null, 'inventario');
                 $lineas[] = [
-                    'account_id' => $config->cta_gasto_merma_id ?? $config->cta_ventas_id,
+                    'account_id' => $ctaGastoMermaId,
                     'debito' => $costoMerma,
                     'credito' => 0
                 ];
                 $lineas[] = [
-                    'account_id' => $config->cta_inventario_id,
+                    'account_id' => $ctaInventarioId,
                     'debito' => 0,
                     'credito' => $costoMerma
                 ];
@@ -383,6 +436,17 @@ class NotaCreditoController extends Controller
         $tipo = strtoupper($nota->tipo_nota);
         $ref = $nota->factura ? "Fac: {$nota->factura->numero_factura}" : "Ref: {$nota->factura_manual_ref}";
         return "NC {$tipo} - {$ref} - {$nota->motivo}";
+    }
+
+    private function resolveAccountId($primaryId, $fallbackId, string $label): int
+    {
+        foreach ([$primaryId, $fallbackId] as $candidate) {
+            if ($candidate && DB::table('accounts')->where('id', $candidate)->exists()) {
+                return (int) $candidate;
+            }
+        }
+
+        throw new \RuntimeException("No hay una cuenta contable valida configurada para {$label}.");
     }
 
     private function generateNCNumber($config)
@@ -426,12 +490,16 @@ class NotaCreditoController extends Controller
             $nota = NotaCredito::with('detalles.item')->findOrFail($id);
 
             if ($nota->estado === 'Anulada') {
-                throw new \Exception("La nota de crédito ya está anulada.");
+                throw new \Exception("La nota de credito ya esta anulada.");
+            }
+
+            if ($this->noteAlreadyIssued($nota)) {
+                throw new \Exception("No se puede anular localmente una nota de credito ya emitida electronicamente.");
             }
 
             // Reversar inventario
             foreach ($nota->detalles as $detalle) {
-                if ($detalle->devolver_stock && $detalle->item->tipo === 'Inventariable') {
+                if ($detalle->devuelto_stock && $detalle->item->tipo === 'Inventariable') {
                     $stockAnterior = floatval($detalle->item->stock_actual);
                     $costoAnterior = floatval($detalle->item->costo_promedio);
                     $stockPosterior = $stockAnterior - floatval($detalle->cantidad);
@@ -464,22 +532,33 @@ class NotaCreditoController extends Controller
 
             $nota->update(['estado' => 'Anulada']);
 
-            // Asiento de reversión
+            // Asiento de reversiÃƒÂ³n
             $config = TenantConfig::first();
             $reversion = [
-                ['account_id' => $config->cta_cxc_id, 'debito' => $nota->total, 'credito' => 0],
-                ['account_id' => $config->cta_ventas_id, 'debito' => 0, 'credito' => $nota->subtotal],
-                ['account_id' => $config->cta_itbms_id, 'debito' => 0, 'credito' => $nota->itbms_total],
+                ['account_id' => $this->resolveAccountId($config->cta_cxc_id ?? null, null, 'cuentas por cobrar'), 'debito' => $nota->total, 'credito' => 0],
+                ['account_id' => $this->resolveAccountId($config->cta_ventas_id ?? null, null, 'ventas'), 'debito' => 0, 'credito' => $nota->subtotal],
+                ['account_id' => $this->resolveAccountId($config->cta_itbms_id ?? null, null, 'ITBMS'), 'debito' => 0, 'credito' => $nota->itbms_total],
             ];
 
             AccountingService::registrarAsiento(
                 now(),
                 "ANUL-{$nota->numero_nota}",
-                "Anulación de {$nota->numero_nota}",
+                "Anulacion de {$nota->numero_nota}",
                 $reversion
             );
 
-            return response()->json(['message' => 'Anulada con éxito', 'data' => $nota->fresh()]);
+            return response()->json(['message' => 'Anulada con exito', 'data' => $nota->fresh()]);
         });
+    }
+
+    private function noteAlreadyIssued(NotaCredito $nota): bool
+    {
+        $status = strtoupper((string) $nota->fe_status);
+        $legalStatus = strtoupper((string) $nota->fe_legal_status);
+
+        return filled($nota->fe_document_id)
+            || filled($nota->fe_cufe)
+            || in_array($status, ['SENT', 'PROCESSED', 'FINISHED', 'DGI_REQUEST'], true)
+            || str_contains($legalStatus, 'AUTHORIZED');
     }
 }

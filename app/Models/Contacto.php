@@ -38,9 +38,19 @@ class Contacto extends Model
     {
         return $this->belongsTo(PaymentTerm::class);
     }
+
+    public function facturas(): HasMany
+    {
+        return $this->hasMany(FacturaVenta::class, 'contacto_id');
+    }
     
     public function sucursales(): HasMany
     {
         return $this->hasMany(Sucursal::class);
+    }
+
+    public function crmLeads(): HasMany
+    {
+        return $this->hasMany(CrmLead::class, 'contacto_id');
     }
 }

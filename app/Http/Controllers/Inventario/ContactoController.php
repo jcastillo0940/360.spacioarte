@@ -41,6 +41,18 @@ class ContactoController extends Controller
             'limite_credito' => 'nullable|numeric|min:0'
         ]);
 
+        $validated['requiere_factura_electronica'] = $request->boolean('requiere_factura_electronica');
+
+        if (
+            $validated['requiere_factura_electronica'] &&
+            $validated['tipo_identificacion'] === 'RUC' &&
+            empty($validated['dv'])
+        ) {
+            return back()->withErrors([
+                'dv' => 'El DV es obligatorio para clientes con RUC que requieran factura electrónica.',
+            ]);
+        }
+
         $contacto = Contacto::create($validated);
 
         if ($request->wantsJson()) {
@@ -56,6 +68,8 @@ class ContactoController extends Controller
             'razon_social' => 'required|string|max:255',
             'tipo_identificacion' => 'required|in:RUC,Cedula,Pasaporte',
             'identificacion' => 'required|string|max:50|unique:contactos,identificacion,' . $contacto->id,
+            'digito_verificador' => 'nullable|string|max:10',
+            'requiere_factura_electronica' => 'boolean',
             'dv' => 'nullable|string|max:2',
             'direccion' => 'nullable|string',
             'telefono' => 'nullable|string|max:50',
@@ -65,6 +79,18 @@ class ContactoController extends Controller
             'payment_term_id' => 'required|exists:payment_terms,id',
             'limite_credito' => 'nullable|numeric|min:0'
         ]);
+
+        $validated['requiere_factura_electronica'] = $request->boolean('requiere_factura_electronica');
+
+        if (
+            $validated['requiere_factura_electronica'] &&
+            $validated['tipo_identificacion'] === 'RUC' &&
+            empty($validated['dv'])
+        ) {
+            return back()->withErrors([
+                'dv' => 'El DV es obligatorio para clientes con RUC que requieran factura electrónica.',
+            ]);
+        }
 
         $contacto->update($validated);
 

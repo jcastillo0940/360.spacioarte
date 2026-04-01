@@ -18,7 +18,7 @@ use App\Http\Controllers\Finanzas\{EstadoCuentaController, FactoringController};
 use App\Http\Controllers\Inventario\{ItemController, ItemCategoryController, ContactoController, SucursalController};
 
 // Ventas
-use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, CustomerPortalController, PosController, CotizacionController};
+use App\Http\Controllers\Ventas\{OrdenVentaController, FacturaController, CobroController, NotaCreditoController, NotaDebitoController, CustomerPortalController, PosController, CotizacionController, InvoiceShareController};
 
 // Compras
 use App\Http\Controllers\Compras\{OrdenCompraController, FacturaCompraController, EgresoController, RecepcionOrdenController, ConsolidarVentasController};
@@ -26,6 +26,7 @@ use App\Http\Controllers\Compras\{OrdenCompraController, FacturaCompraController
 // RRHH & Flota
 use App\Http\Controllers\RRHH\{EmpleadoController, NominaController};
 use App\Http\Controllers\Flota\VehiculoController;
+use App\Http\Controllers\CRM\{PipelineController, LeadController, ActivityController};
 
 // Producción (Módulo Manufactura SRS v2.0)
 use App\Http\Controllers\Produccion\{ProcesoController, FamiliaProduccionController, PliegoController, PlantaController, RequisicionController, KdsController, DisenoController};
@@ -54,6 +55,8 @@ Route::middleware('guest')->group(function () {
     // Redireccionamos la raíz al login para mayor claridad
     Route::get('/', function() { return redirect()->route('login'); });
 });
+
+Route::get('/f/{token}', [InvoiceShareController::class, 'show'])->name('facturas.shared.show');
 
 // Portal del Cliente - Seguimiento y Aprobación (SRS Punto 9)
 Route::prefix('tracking')->group(function () {
@@ -143,8 +146,13 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     // ========================================================================
     Route::prefix('api')->group(function () {
         Route::get('/configuracion', [SettingsController::class, 'index'])->name('api.settings.index');
+        Route::get('/configuracion/facturacion-electronica/status', [SettingsController::class, 'feStatus'])->name('api.settings.fe.status');
+        Route::get('/configuracion/facturacion-electronica/recursos', [SettingsController::class, 'feResources'])->name('api.settings.fe.resources');
+        Route::get('/configuracion/facturacion-electronica/afiliar', [SettingsController::class, 'feAffiliate'])->name('api.settings.fe.affiliate');
+        Route::get('/configuracion/facturacion-electronica/solicitar-qr', [SettingsController::class, 'feRequestQr'])->name('api.settings.fe.request-qr');
         Route::get('/configuracion/parametros', [ParametrizacionController::class, 'index']);
         Route::get('/configuracion/vendedores', [VendedorController::class, 'index']);
+        Route::get('/configuracion/usuarios', [\App\Http\Controllers\Config\UserController::class, 'index']);
         Route::get('/inventario/items', [ItemController::class, 'index']);
         Route::get('/inventario/contactos', [ContactoController::class, 'index']);
         Route::post('/inventario/contactos', [ContactoController::class, 'store']);
@@ -170,10 +178,17 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/ventas/ordenes/{orden}/reimprimir', [OrdenVentaController::class, 'reimprimir']);
         Route::get('/ventas/facturas', [FacturaController::class, 'index']);
         Route::get('/ventas/facturas/{factura}', [FacturaController::class, 'show']);
+        Route::post('/ventas/facturas/{factura}/whatsapp-link', [InvoiceShareController::class, 'whatsappLink']);
         Route::get('/ventas/cobros/datos', [CobroController::class, 'getDatos']);
+        Route::get('/ventas/cobros/clientes/{contacto}/facturas-pendientes', [CobroController::class, 'pendingByCustomer']);
         Route::get('/ventas/facturas/{factura}/datos-nc', [NotaCreditoController::class, 'getDatosFactura']);
+        Route::get('/ventas/facturas/{factura}/datos-nd', [NotaDebitoController::class, 'getDatosFactura']);
         Route::get('/ventas/notas-credito', [NotaCreditoController::class, 'index']);
         Route::get('/ventas/notas-credito/{nota}', [NotaCreditoController::class, 'show']);
+        Route::get('/ventas/notas-debito', [NotaDebitoController::class, 'index']);
+        Route::get('/ventas/notas-debito/{nota}', [NotaDebitoController::class, 'show']);
+        Route::get('/ventas/pos/clientes', [PosController::class, 'searchCustomers']);
+        Route::get('/ventas/pos/clientes/{contacto}/facturas-pendientes', [PosController::class, 'customerPendingInvoices']);
         Route::get('/compras/ordenes', [OrdenCompraController::class, 'index']);
         Route::get('/compras/ordenes/datos', [OrdenCompraController::class, 'getDatos']);
         Route::get('/compras/ordenes/{orden}', [OrdenCompraController::class, 'show']);
@@ -185,6 +200,21 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/reportes/estado-resultados', [ReporteController::class, 'estadoResultados']);
         Route::get('/finanzas/factoring', [FactoringController::class, 'index']);
         Route::get('/finanzas/estados-cuenta/{contacto}/data', [EstadoCuentaController::class, 'getRawData']);
+        Route::get('/crm/pipelines', [PipelineController::class, 'index']);
+        Route::post('/crm/pipelines', [PipelineController::class, 'store']);
+        Route::put('/crm/pipelines/{pipeline}', [PipelineController::class, 'update']);
+        Route::delete('/crm/pipelines/{pipeline}', [PipelineController::class, 'destroy']);
+        Route::get('/crm/leads', [LeadController::class, 'index']);
+        Route::post('/crm/leads', [LeadController::class, 'store']);
+        Route::put('/crm/leads/{lead}', [LeadController::class, 'update']);
+        Route::post('/crm/leads/{lead}/move', [LeadController::class, 'move']);
+        Route::delete('/crm/leads/{lead}', [LeadController::class, 'destroy']);
+        Route::get('/crm/activities/upcoming', [ActivityController::class, 'upcoming']);
+        Route::get('/crm/leads/{lead}/activities', [ActivityController::class, 'index']);
+        Route::post('/crm/leads/{lead}/activities', [ActivityController::class, 'store']);
+        Route::put('/crm/activities/{activity}', [ActivityController::class, 'update']);
+        Route::post('/crm/activities/{activity}/complete', [ActivityController::class, 'complete']);
+        Route::delete('/crm/activities/{activity}', [ActivityController::class, 'destroy']);
     });
 
     // ========================================================================
@@ -206,9 +236,16 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     // ========================================================================
     
     // CONFIGURACIÓN
-    Route::prefix('configuracion')->middleware(['role:Administrador Total'])->group(function () {
+    Route::prefix('configuracion')->middleware(['role:Administrador Total|Developer|Superadmin'])->group(function () {
         Route::get('/', function() { return Inertia::render('Config/Settings/Index'); })->name('settings.index');
         Route::post('/actualizar', [SettingsController::class, 'update'])->name('settings.update');
+        Route::post('/smtp/test', [SettingsController::class, 'testSmtp'])->name('settings.smtp.test');
+        Route::post('/facturacion-electronica/qr', [SettingsController::class, 'feUpdateQr'])->name('settings.fe.qr');
+        Route::post('/facturacion-electronica/certificados', [SettingsController::class, 'feSaveCertificates'])->name('settings.fe.certificates');
+        Route::post('/facturacion-electronica/company', [SettingsController::class, 'feCreateCompany'])->name('settings.fe.company');
+        Route::post('/facturacion-electronica/company/select', [SettingsController::class, 'feSelectCompany'])->name('settings.fe.company.select');
+        Route::post('/facturacion-electronica/office', [SettingsController::class, 'feCreateOffice'])->name('settings.fe.office');
+        Route::post('/facturacion-electronica/office/select', [SettingsController::class, 'feSelectOffice'])->name('settings.fe.office.select');
         Route::prefix('parametros')->group(function () {
             Route::get('/', function() { return Inertia::render('Config/Parametrizacion/Index'); })->name('params.index');
             Route::post('/impuestos', [ParametrizacionController::class, 'storeTax'])->name('params.tax.store');
@@ -261,6 +298,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::put('/{sucursal}', [SucursalController::class, 'update'])->name('sucursales.update');
         });
     });
+
+    Route::prefix('crm')->middleware(['role:Administrador Total|Developer|Superadmin'])->group(function () {
+        Route::get('/', function () {
+            return Inertia::render('CRM/Kanban');
+        })->name('crm.index');
+    });
     
     // CONTABILIDAD
     Route::prefix('contabilidad')->middleware(['role:Administrador Total'])->group(function () {
@@ -298,6 +341,9 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::get('/', function() { return Inertia::render('Ventas/Facturas/Index'); })->name('facturas.index');
             Route::get('/{factura}', function($id) { return Inertia::render('Ventas/Facturas/Show', ['facturaId' => $id]); })->name('facturas.show');
             Route::post('/convertir/{orden}', [FacturaController::class, 'convertirDesdeOrden'])->name('facturas.convertir');
+            Route::post('/{factura}/emitir-electronica', [FacturaController::class, 'emitirElectronica'])->name('facturas.emitir-electronica');
+            Route::post('/{factura}/sincronizar-electronica', [FacturaController::class, 'sincronizarElectronica'])->name('facturas.sincronizar-electronica');
+            Route::get('/{factura}/ticket-termico', [FacturaController::class, 'imprimirTicket'])->name('facturas.ticket-termico');
         });
         Route::prefix('cobros')->group(function () {
             Route::get('/crear', [CobroController::class, 'create'])->name('cobros.create');
@@ -308,16 +354,34 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             Route::get('/crear-manual', function() { return Inertia::render('Ventas/NotasCredito/CreateManual'); })->name('crear-manual');
             Route::get('/factura/{factura}/datos', [NotaCreditoController::class, 'getDatosFactura'])->name('datos-factura');
             Route::post('/', [NotaCreditoController::class, 'store'])->name('store');
+            Route::post('/{nota}/emitir-electronica', [NotaCreditoController::class, 'emitirElectronica'])->name('emitir-electronica');
+            Route::post('/{nota}/sincronizar-electronica', [NotaCreditoController::class, 'sincronizarElectronica'])->name('sincronizar-electronica');
             Route::post('/{nota}/anular', [NotaCreditoController::class, 'anular'])->name('anular');
+            Route::get('/{nota}/pdf', [NotaCreditoController::class, 'generarPDF'])->name('pdf');
             Route::get('/{nota}', [NotaCreditoController::class, 'show'])->name('show');
+        });
+        Route::prefix('notas-debito')->name('ventas.nd.')->group(function () {
+            Route::get('/', [NotaDebitoController::class, 'index'])->name('index');
+            Route::get('/crear-manual', function() { return Inertia::render('Ventas/NotasDebito/CreateManual'); })->name('crear-manual');
+            Route::get('/factura/{factura}/datos', [NotaDebitoController::class, 'getDatosFactura'])->name('datos-factura');
+            Route::post('/', [NotaDebitoController::class, 'store'])->name('store');
+            Route::post('/{nota}/emitir-electronica', [NotaDebitoController::class, 'emitirElectronica'])->name('emitir-electronica');
+            Route::post('/{nota}/sincronizar-electronica', [NotaDebitoController::class, 'sincronizarElectronica'])->name('sincronizar-electronica');
+            Route::post('/{nota}/anular', [NotaDebitoController::class, 'anular'])->name('anular');
+            Route::get('/{nota}/pdf', [NotaDebitoController::class, 'generarPDF'])->name('pdf');
+            Route::get('/{nota}', [NotaDebitoController::class, 'show'])->name('show');
         });
         Route::prefix('pos')->name('pos.')->group(function () {
             Route::get('/', [PosController::class, 'index'])->name('index');
             Route::post('/abrir', [PosController::class, 'openSession'])->name('abrir');
             Route::post('/cerrar', [PosController::class, 'closeSession'])->name('cerrar');
+            Route::get('/corte-x/pdf', [PosController::class, 'generarCorteXPdf'])->name('corte-x.pdf');
             Route::get('/items', [PosController::class, 'searchItems'])->name('items');
             Route::get('/ordenes', [PosController::class, 'searchOrders'])->name('ordenes');
+            Route::get('/clientes', [PosController::class, 'searchCustomers'])->name('clientes');
+            Route::get('/clientes/{contacto}/facturas-pendientes', [PosController::class, 'customerPendingInvoices'])->name('clientes.facturas-pendientes');
             Route::post('/procesar', [PosController::class, 'processSale'])->name('procesar');
+            Route::post('/cobrar-facturas', [PosController::class, 'processInvoicePayment'])->name('cobrar-facturas');
             Route::get('/corte-x', [PosController::class, 'getCorteX'])->name('corte-x');
         });
     });
@@ -453,3 +517,4 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 
 });
+

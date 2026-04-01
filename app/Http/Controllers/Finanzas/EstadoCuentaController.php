@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Contacto, FacturaVenta, FacturaCompra, ReciboPago, Egreso, NotaCredito};
+use App\Models\{Contacto, FacturaVenta, FacturaCompra, ReciboPago, Egreso, NotaCredito, NotaDebito};
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Carbon;
@@ -52,35 +52,32 @@ class EstadoCuentaController extends Controller
         $fechaDesde = $request->input('fecha_desde', Carbon::now()->startOfMonth()->toDateString());
         $fechaHasta = $request->input('fecha_hasta', Carbon::now()->endOfMonth()->toDateString());
 
-        // 1. Saldo Anterior ( CXC - PagosRecibidos - NotasCredito )
+        // 1. Saldo Anterior ( CXC + NotasDebito - PagosRecibidos - NotasCredito )
         $cxcPrevio = FacturaVenta::where('contacto_id', $contacto_id)->where('fecha_emision', '<', $fechaDesde)->sum('total');
         $pagosCxcPrevio = ReciboPago::whereHas('factura', fn($q) => $q->where('contacto_id', $contacto_id))->where('fecha_pago', '<', $fechaDesde)->sum('monto_pagado');
-        
-        // --- NUEVO: Notas de Crédito previas ---
+        $ndPrevio = NotaDebito::where('contacto_id', $contacto_id)->where('fecha', '<', $fechaDesde)->where('estado', 'Activa')->sum('total');
         $ncPrevio = NotaCredito::where('contacto_id', $contacto_id)->where('fecha', '<', $fechaDesde)->where('estado', 'Activa')->sum('total');
 
         $cxpPrevio = FacturaCompra::where('contacto_id', $contacto_id)->where('fecha_emision', '<', $fechaDesde)->sum('total');
         $pagosCxpPrevio = Egreso::whereHas('facturaCompra', fn($q) => $q->where('contacto_id', $contacto_id))->where('fecha_pago', '<', $fechaDesde)->sum('monto_pagado');
 
-        // El saldo anterior resta las NC del cliente porque disminuyen su deuda
-        $saldoAnterior = ($cxcPrevio + $pagosCxpPrevio) - ($pagosCxcPrevio + $cxpPrevio + $ncPrevio);
+        $saldoAnterior = ($cxcPrevio + $ndPrevio + $pagosCxpPrevio) - ($pagosCxcPrevio + $cxpPrevio + $ncPrevio);
 
         // 2. Movimientos
         $movimientos = collect();
 
-        // Ventas (Débito)
         FacturaVenta::where('contacto_id', $contacto_id)->whereBetween('fecha_emision', [$fechaDesde, $fechaHasta])->get()
             ->each(fn($fv) => $movimientos->push(['fecha' => $fv->fecha_emision, 'referencia' => $fv->numero_factura, 'descripcion' => 'Factura de Venta', 'debito' => (float)$fv->total, 'credito' => 0]));
 
-        // Pagos Recibidos (Crédito)
         ReciboPago::whereHas('factura', fn($q) => $q->where('contacto_id', $contacto_id))->whereBetween('fecha_pago', [$fechaDesde, $fechaHasta])->get()
             ->each(fn($p) => $movimientos->push(['fecha' => $p->fecha_pago, 'referencia' => $p->numero_recibo, 'descripcion' => 'Recibo de Pago', 'debito' => 0, 'credito' => (float)$p->monto_pagado]));
 
-        // --- NUEVO: Notas de Crédito del periodo (Crédito) ---
-        NotaCredito::where('contacto_id', $contacto_id)->whereBetween('fecha', [$fechaDesde, $fechaHasta])->where('estado', 'Activa')->get()
-            ->each(fn($nc) => $movimientos->push(['fecha' => $nc->fecha, 'referencia' => $nc->numero_nota, 'descripcion' => 'Nota de Crédito', 'debito' => 0, 'credito' => (float)$nc->total]));
+        NotaDebito::where('contacto_id', $contacto_id)->whereBetween('fecha', [$fechaDesde, $fechaHasta])->where('estado', 'Activa')->get()
+            ->each(fn($nd) => $movimientos->push(['fecha' => $nd->fecha, 'referencia' => $nd->numero_nota, 'descripcion' => 'Nota de Debito', 'debito' => (float)$nd->total, 'credito' => 0]));
 
-        // Compras y Egresos (Mantenemos tu lógica existente)
+        NotaCredito::where('contacto_id', $contacto_id)->whereBetween('fecha', [$fechaDesde, $fechaHasta])->where('estado', 'Activa')->get()
+            ->each(fn($nc) => $movimientos->push(['fecha' => $nc->fecha, 'referencia' => $nc->numero_nota, 'descripcion' => 'Nota de Credito', 'debito' => 0, 'credito' => (float)$nc->total]));
+
         FacturaCompra::where('contacto_id', $contacto_id)->whereBetween('fecha_emision', [$fechaDesde, $fechaHasta])->get()
             ->each(fn($fc) => $movimientos->push(['fecha' => $fc->fecha_emision, 'referencia' => $fc->numero_factura_proveedor, 'descripcion' => 'Factura de Compra', 'debito' => 0, 'credito' => (float)$fc->total]));
 

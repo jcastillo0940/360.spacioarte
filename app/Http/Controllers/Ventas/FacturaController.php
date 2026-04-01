@@ -9,12 +9,17 @@ use App\Models\OrdenVenta;
 use App\Models\PaymentTerm;
 use App\Models\TenantConfig;
 use App\Services\AccountingService;
+use App\Services\ElectronicInvoicing\AlanubePanamaService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class FacturaController extends Controller
 {
+    private const PANAMA_TIMEZONE = 'America/Panama';
+
     /**
      * Lista de facturas para la tabla de React
      */
@@ -51,7 +56,7 @@ class FacturaController extends Controller
     /**
      * Convierte una Orden de Venta en Factura Fiscal e integra contabilidad
      */
-    public function convertirDesdeOrden(OrdenVenta $orden)
+    public function convertirDesdeOrden(OrdenVenta $orden, AlanubePanamaService $alanube)
     {
         if ($orden->estado === 'Facturada') {
             return back()->withErrors(['error' => 'Esta orden ya ha sido facturada previamente.']);
@@ -74,8 +79,10 @@ class FacturaController extends Controller
 
         $diasVencimiento = $paymentTerm?->dias_vencimiento ?? 30;
 
-        return DB::transaction(function () use ($orden, $diasVencimiento, $paymentTermId) {
+        return DB::transaction(function () use ($orden, $diasVencimiento, $paymentTermId, $alanube) {
             $config = TenantConfig::first();
+            $fechaEmisionPanama = now(self::PANAMA_TIMEZONE)->toDateString();
+            $fechaVencimientoPanama = now(self::PANAMA_TIMEZONE)->addDays($diasVencimiento)->toDateString();
             
             // 1. Crear la cabecera de la Factura
             $factura = FacturaVenta::create([
@@ -83,8 +90,8 @@ class FacturaController extends Controller
                 'contacto_id'       => $orden->contacto_id,
                 'vendedor_id'       => $orden->vendedor_id,
                 'orden_venta_id'    => $orden->id,
-                'fecha_emision'     => now(),
-                'fecha_vencimiento' => now()->addDays($diasVencimiento),
+                'fecha_emision'     => $fechaEmisionPanama,
+                'fecha_vencimiento' => $fechaVencimientoPanama,
                 'payment_term_id'   => $paymentTermId,
                 'subtotal'          => $orden->subtotal,
                 'itbms_total'       => $orden->itbms_total,
@@ -183,8 +190,78 @@ class FacturaController extends Controller
             // 4. Actualizar estado de la orden
             $orden->update(['estado' => 'Facturada']);
 
+            if (
+                $orden->cliente?->requiere_factura_electronica &&
+                $config?->fe_enabled &&
+                $config?->fe_auto_emit
+            ) {
+                try {
+                    $alanube->emitirFactura($factura);
+                } catch (\Throwable $e) {
+                    Log::warning('No se pudo emitir FE en Alanube automáticamente: ' . $e->getMessage());
+                    $factura->refresh();
+                    $factura->update([
+                        'fe_provider' => 'alanube_pan',
+                        'fe_error_message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             return redirect()->route('facturas.index')->with('success', 'Factura ' . $factura->numero_factura . ' generada correctamente.');
         });
+    }
+
+    public function emitirElectronica(FacturaVenta $factura, AlanubePanamaService $alanube)
+    {
+        if ($this->invoiceAlreadyIssued($factura)) {
+            return redirect()->route('facturas.show', $factura)->withErrors([
+                'error' => 'La factura ya fue emitida electronicamente y no puede reenviarse.',
+            ]);
+        }
+
+        try {
+            $alanube->emitirFactura($factura);
+
+            return redirect()->route('facturas.show', $factura)->with('success', 'Factura electrónica enviada a Alanube correctamente.');
+        } catch (\Throwable $e) {
+            return redirect()->route('facturas.show', $factura)->withErrors([
+                'error' => 'No se pudo emitir la factura electrónica: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function sincronizarElectronica(FacturaVenta $factura, AlanubePanamaService $alanube)
+    {
+        try {
+            $alanube->sincronizarFactura($factura);
+
+            return redirect()->route('facturas.show', $factura)->with('success', 'Estado de factura electrónica actualizado.');
+        } catch (\Throwable $e) {
+            return redirect()->route('facturas.show', $factura)->withErrors([
+                'error' => 'No se pudo consultar el estado electrónico: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function imprimirTicket(FacturaVenta $factura)
+    {
+        $factura->load(['cliente', 'detalles.item', 'vendedor']);
+        $config = TenantConfig::first();
+        $widthMm = (int) ($config->factura_termica_ancho_mm ?? 80);
+        $widthMm = in_array($widthMm, [58, 80], true) ? $widthMm : 80;
+        $paperWidthPoints = $this->mmToPoints($widthMm);
+        $paperHeightPoints = $this->calculateTicketHeight($factura);
+
+        $pdf = Pdf::loadView('pdf.factura-ticket-termica', [
+            'factura' => $factura,
+            'config' => $config,
+            'ticketWidthMm' => $widthMm,
+            'qrImageUrl' => $factura->fe_public_url
+                ? 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' . urlencode($factura->fe_public_url)
+                : null,
+        ])->setPaper([0, 0, $paperWidthPoints, $paperHeightPoints], 'portrait');
+
+        return $pdf->stream("ticket-{$factura->numero_factura}.pdf");
     }
 
     private function generateInvoiceNumber($config)
@@ -205,5 +282,30 @@ class FacturaController extends Controller
         }
 
         return $serie . '-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function invoiceAlreadyIssued(FacturaVenta $factura): bool
+    {
+        $status = strtoupper((string) $factura->fe_status);
+        $legalStatus = strtoupper((string) $factura->fe_legal_status);
+
+        return filled($factura->fe_document_id)
+            || filled($factura->fe_cufe)
+            || in_array($status, ['SENT', 'PROCESSED', 'FINISHED'], true)
+            || str_contains($legalStatus, 'AUTHORIZED');
+    }
+
+    private function mmToPoints(int $mm): float
+    {
+        return $mm * 2.83465;
+    }
+
+    private function calculateTicketHeight(FacturaVenta $factura): float
+    {
+        $baseHeightMm = 110;
+        $lineHeightMm = 12;
+        $extraHeightMm = max($factura->detalles->count(), 1) * $lineHeightMm;
+
+        return $this->mmToPoints($baseHeightMm + $extraHeightMm);
     }
 }

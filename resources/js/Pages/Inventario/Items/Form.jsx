@@ -31,6 +31,8 @@ export default function Form({ item = null, taxes = [], itemCategories = [], pro
         unidad_medida: item?.unidad_medida || 'UND',
         categoria: item?.categoria || '',
         category_id: item?.category_id || '',
+        fe_codigo_producto: item?.fe_codigo_producto || '',
+        fe_codigo_unidad: item?.fe_codigo_unidad || '',
         ancho_cm: item?.ancho_cm || '',
         largo_cm: item?.largo_cm || '',
         es_rollo: item?.es_rollo || false,
@@ -558,6 +560,43 @@ export default function Form({ item = null, taxes = [], itemCategories = [], pro
                                             >
                                                 <div className={`w-5 h-5 bg-white rounded-full transition-transform ${data.es_para_nesting && !esFabricable ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                             </button>
+                                        </div>
+
+                                        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5">
+                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600">Facturación electrónica Panamá</div>
+                                            <p className="mt-2 text-xs font-bold leading-6 text-amber-800">
+                                                Cada producto debe tener un código fiscal para que DGI no rechace la línea de factura. También puedes fijar el código de unidad que se enviará a Alanube.
+                                            </p>
+                                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código fiscal del producto</label>
+                                                    <input
+                                                        type="text"
+                                                        value={data.fe_codigo_producto}
+                                                        onChange={e => setData('fe_codigo_producto', e.target.value)}
+                                                        className="w-full bg-white border border-amber-200 rounded-2xl px-5 py-4 font-bold text-slate-800"
+                                                        placeholder="Código fiscal / bienes y servicios"
+                                                    />
+                                                    <p className="text-xs text-slate-500 px-1">
+                                                        Este campo viajará a la factura electrónica de cada item.
+                                                    </p>
+                                                    {errors.fe_codigo_producto && <p className="text-red-500 text-sm">{errors.fe_codigo_producto}</p>}
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código de unidad FE</label>
+                                                    <input
+                                                        type="text"
+                                                        value={data.fe_codigo_unidad}
+                                                        onChange={e => setData('fe_codigo_unidad', e.target.value.toUpperCase())}
+                                                        className="w-full bg-white border border-amber-200 rounded-2xl px-5 py-4 font-bold text-slate-800"
+                                                        placeholder="UND, MT, MT2, KG..."
+                                                    />
+                                                    <p className="text-xs text-slate-500 px-1">
+                                                        Si lo dejas vacío, el sistema usará la unidad base del artículo.
+                                                    </p>
+                                                    {errors.fe_codigo_unidad && <p className="text-red-500 text-sm">{errors.fe_codigo_unidad}</p>}
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -24,6 +24,8 @@ class Item extends Model
         'stock_maximo',
         'tax_id',
         'categoria',
+        'fe_codigo_producto',
+        'fe_codigo_unidad',
         'category_id',
         'unidad_medida',
         'activo',

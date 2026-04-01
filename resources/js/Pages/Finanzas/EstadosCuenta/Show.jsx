@@ -154,13 +154,19 @@ export default function Show({ auth, contacto, movimientos, saldo_total, resumen
                                 PDF Oficial
                             </a>
 
-                            <button 
-                                onClick={() => window.print()} 
+                            <a 
+                                href={route('finanzas.estado-cuenta.pdf', {
+                                    contacto: contacto.id,
+                                    fecha_desde: filtros.desde,
+                                    fecha_hasta: filtros.hasta
+                                })}
+                                target="_blank"
+                                rel="noreferrer"
                                 className="px-6 py-3 bg-slate-900 text-white rounded-lg font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition flex items-center gap-2"
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 00-2 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                                Imprimir
-                            </button>
+                                Abrir PDF
+                            </a>
                         </div>
                     </div>
                 </div>

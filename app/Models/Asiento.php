@@ -17,6 +17,12 @@ class Asiento extends Model
         'total_credito'
     ];
 
+    protected $casts = [
+        'fecha' => 'date',
+        'total_debito' => 'decimal:2',
+        'total_credito' => 'decimal:2',
+    ];
+
     public function detalles(): HasMany
     {
         return $this->hasMany(AsientoDetalle::class, 'asiento_id');

@@ -27,7 +27,11 @@ export default function EstadoResultados() {
     };
 
     const handlePrint = () => {
-        window.print();
+        const url = new URL(window.location.origin + '/reportes/reportes/financieros/resultados');
+        url.searchParams.set('fecha_inicio', fechaInicio);
+        url.searchParams.set('fecha_fin', fechaFin);
+        url.searchParams.set('export', 'pdf');
+        window.open(url.toString(), '_blank', 'noopener,noreferrer');
     };
 
     return (
