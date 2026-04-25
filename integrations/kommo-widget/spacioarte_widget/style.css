@@ -1,202 +1,401 @@
-.spacioarte-kommo-root,
-.spacioarte-kommo-root * {
+.card-widgets__widget__body .spacioarte-kommo-root,
+.card-widgets__widget__body .spacioarte-kommo-root * {
   box-sizing: border-box;
 }
 
-.spacioarte-kommo-shell {
+.card-widgets__widget__body .spacioarte-kommo-root {
+  color: #1f2937;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #172033;
+  gap: 10px;
 }
 
-.spacioarte-kommo-section,
-.spacioarte-kommo-card,
-.spacioarte-kommo-share,
-.spacioarte-kommo-settings-help {
-  background: #ffffff;
-  border: 1px solid #d8e0ef;
+.card-widgets__widget__body .spacioarte-kommo-hero,
+.card-widgets__widget__body .spacioarte-kommo-card,
+.card-widgets__widget__body .spacioarte-kommo-share,
+.card-widgets__widget__body .spacioarte-kommo-settings-help {
+  border: 1px solid #d8e3ef;
   border-radius: 14px;
-  padding: 12px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
 }
 
-.spacioarte-kommo-header {
+.card-widgets__widget__body .spacioarte-kommo-hero {
+  padding: 14px;
+  background: linear-gradient(145deg, #fff8ef 0%, #ffe9cf 100%);
+}
+
+.card-widgets__widget__body .spacioarte-kommo-hero--ready {
+  background: linear-gradient(145deg, #fff8ef 0%, #ffe2c1 100%);
+}
+
+.card-widgets__widget__body .spacioarte-kommo-hero--danger {
+  background: linear-gradient(145deg, #fff1f2 0%, #ffe4e6 100%);
+}
+
+.card-widgets__widget__body .spacioarte-kommo-hero__top,
+.card-widgets__widget__body .spacioarte-kommo-contact-head,
+.card-widgets__widget__body .spacioarte-kommo-order-card__header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
 }
 
-.spacioarte-kommo-eyebrow {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: #7c8ca5;
+.card-widgets__widget__body .spacioarte-kommo-eyebrow {
   margin-bottom: 4px;
+  font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7a4a1d;
 }
 
-.spacioarte-kommo-title {
+.card-widgets__widget__body .spacioarte-kommo-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.1;
   color: #0f172a;
 }
 
-.spacioarte-kommo-meta {
+.card-widgets__widget__body .spacioarte-kommo-meta {
   margin-top: 4px;
   font-size: 12px;
   color: #64748b;
 }
 
-.spacioarte-kommo-status,
-.spacioarte-kommo-stat {
+.card-widgets__widget__body .spacioarte-kommo-pill-row {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 12px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
-.spacioarte-kommo-status span,
-.spacioarte-kommo-stat span {
-  color: #64748b;
-}
-
-.spacioarte-kommo-status strong,
-.spacioarte-kommo-stat strong {
-  color: #0f172a;
-  text-align: right;
-}
-
-.spacioarte-kommo-actions {
-  margin-top: 12px;
-}
-
-.spacioarte-kommo-btn {
-  border: 0;
-  background: #2563eb;
-  color: #ffffff;
-  padding: 8px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 12px;
+.card-widgets__widget__body .spacioarte-kommo-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #334155;
+  font-size: 11px;
   font-weight: 700;
-  transition: opacity 0.2s ease;
 }
 
-.spacioarte-kommo-btn:hover {
-  opacity: 0.92;
+.card-widgets__widget__body .spacioarte-kommo-pill--ok {
+  background: #dcfce7;
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.12);
 }
 
-.spacioarte-kommo-btn--ghost {
-  background: #eef2ff;
-  color: #1d4ed8;
+.card-widgets__widget__body .spacioarte-kommo-card,
+.card-widgets__widget__body .spacioarte-kommo-share,
+.card-widgets__widget__body .spacioarte-kommo-settings-help {
+  padding: 14px;
 }
 
-.spacioarte-kommo-card__title {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #475569;
-  margin-bottom: 8px;
+.card-widgets__widget__body .spacioarte-kommo-grid-2,
+.card-widgets__widget__body .spacioarte-kommo-metrics,
+.card-widgets__widget__body .spacioarte-kommo-tile-grid,
+.card-widgets__widget__body .spacioarte-kommo-info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
-.spacioarte-kommo-card--muted {
+.card-widgets__widget__body .spacioarte-kommo-metric {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-metric--blue {
+  background: #eff6ff;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-metric--amber {
+  background: #fff7ed;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-metric--dark {
+  background: #102542;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-metric--light {
   background: #f8fafc;
 }
 
-.spacioarte-kommo-card--muted p,
-.spacioarte-kommo-empty,
-.spacioarte-kommo-loading {
-  margin: 0;
-  font-size: 12px;
+.card-widgets__widget__body .spacioarte-kommo-metric__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: #64748b;
 }
 
-.spacioarte-kommo-alert {
-  margin-top: 10px;
-  background: #fff1f2;
-  color: #be123c;
-  border-radius: 10px;
-  padding: 10px;
-  font-size: 12px;
+.card-widgets__widget__body .spacioarte-kommo-metric__value {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
 }
 
-.spacioarte-kommo-order-form {
-  display: flex;
-  gap: 8px;
+.card-widgets__widget__body .spacioarte-kommo-metric--dark .spacioarte-kommo-metric__label,
+.card-widgets__widget__body .spacioarte-kommo-metric--dark .spacioarte-kommo-metric__value {
+  color: #ffffff;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-card__title {
   margin-bottom: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
 }
 
-.spacioarte-kommo-input {
+.card-widgets__widget__body .spacioarte-kommo-tile {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #d9e2ec;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-tile--primary {
+  background: linear-gradient(135deg, #1d4f91, #102542);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-tile--neutral {
+  background: #fff7ed;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-tile__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-tile__meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0.82;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-contact-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-contact-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-info-block {
+  padding: 10px 11px;
+  border: 1px solid #e8eef5;
+  border-radius: 11px;
+  background: #fafcff;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-info-block span {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-info-block strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-order-form {
+  display: flex;
+  gap: 6px;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid #cbd5e1;
+  padding: 9px 10px;
+  border: 1px solid #d9e2ec;
   border-radius: 10px;
-  padding: 8px 10px;
+  background: #ffffff;
+  color: #0f172a;
   font-size: 12px;
 }
 
-.spacioarte-kommo-list {
+.card-widgets__widget__body .spacioarte-kommo-order-card {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #fde2c3;
+  border-radius: 12px;
+  background: #fffaf4;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-order-card__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-order-card__meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.spacioarte-kommo-list-item {
+.card-widgets__widget__body .spacioarte-kommo-list-item {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 8px;
-  align-items: center;
-  padding: 10px;
-  border-radius: 10px;
-  background: #f8fafc;
+  padding: 11px;
+  border: 1px solid #e7edf5;
+  border-radius: 12px;
+  background: #ffffff;
 }
 
-.spacioarte-kommo-list-item__title {
-  font-size: 12px;
+.card-widgets__widget__body .spacioarte-kommo-list-item__body,
+.card-widgets__widget__body .spacioarte-kommo-list-item__side {
+  min-width: 0;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-list-item__title {
+  font-size: 13px;
   font-weight: 700;
   color: #0f172a;
 }
 
-.spacioarte-kommo-list-item__meta {
+.card-widgets__widget__body .spacioarte-kommo-list-item__meta {
   margin-top: 2px;
   font-size: 11px;
   color: #64748b;
 }
 
-.spacioarte-kommo-link {
-  display: inline-flex;
-  margin-top: 8px;
-  font-size: 12px;
+.card-widgets__widget__body .spacioarte-kommo-list-item__amount {
+  font-size: 13px;
   font-weight: 700;
-  color: #2563eb;
+  color: #9a3412;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-list-item__actions,
+.card-widgets__widget__body .spacioarte-kommo-share__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-btn,
+.card-widgets__widget__body .spacioarte-kommo-wide-btn,
+.card-widgets__widget__body .spacioarte-kommo-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
   text-decoration: none;
 }
 
-.spacioarte-kommo-link:hover {
-  text-decoration: underline;
+.card-widgets__widget__body .spacioarte-kommo-btn {
+  background: #ea580c;
+  color: #ffffff;
 }
 
-.spacioarte-kommo-share {
+.card-widgets__widget__body .spacioarte-kommo-btn--soft {
+  background: rgba(255, 255, 255, 0.75);
+  color: #0f172a;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-wide-btn {
+  width: 100%;
+  margin-top: 10px;
+  background: #102542;
+  color: #ffffff;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-chip-btn {
+  background: #ea580c;
+  color: #ffffff;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-chip-btn--light {
+  background: #eaf1fb;
+  color: #102542;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-alert {
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid #fecdd3;
+  border-radius: 12px;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-empty,
+.card-widgets__widget__body .spacioarte-kommo-loading,
+.card-widgets__widget__body .spacioarte-kommo-hint,
+.card-widgets__widget__body .spacioarte-kommo-settings-help p {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.card-widgets__widget__body .spacioarte-kommo-hint-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
+  margin-top: 10px;
 }
 
-.spacioarte-kommo-settings-help p {
-  margin: 0 0 6px;
-  font-size: 12px;
-  color: #475569;
+.card-widgets__widget__body .spacioarte-kommo-hint {
+  padding: 9px 10px;
+  border: 1px dashed #d9e2ec;
+  border-radius: 10px;
+  background: #f8fafc;
 }
 
-.spacioarte-kommo-settings-help code {
-  background: #eff6ff;
-  color: #1d4ed8;
+.card-widgets__widget__body .spacioarte-kommo-settings-help code {
   padding: 1px 4px;
-  border-radius: 4px;
+  border-radius: 5px;
+  background: #eaf1fb;
+  color: #102542;
 }

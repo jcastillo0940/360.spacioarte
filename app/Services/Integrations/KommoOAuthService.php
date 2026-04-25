@@ -12,6 +12,17 @@ use RuntimeException;
 
 class KommoOAuthService
 {
+    public function findActiveInstallation(?string $subdomain): ?KommoInstallation
+    {
+        $normalized = $this->normalizeSubdomain($subdomain);
+
+        return KommoInstallation::query()
+            ->when($normalized, fn ($query) => $query->where('subdomain', $normalized))
+            ->whereNull('revoked_at')
+            ->latest('id')
+            ->first();
+    }
+
     public function buildAuthorizationUrl(?string $state = null): string
     {
         $clientId = config('services.kommo.client_id');
@@ -125,6 +136,35 @@ class KommoOAuthService
         ];
     }
 
+    public function fetchEntitySnapshot(?string $subdomain, string $entityType, string $entityId): array
+    {
+        $installation = $this->findActiveInstallation($subdomain);
+
+        if (!$installation) {
+            throw new RuntimeException('No active Kommo installation found for this subdomain.');
+        }
+
+        if ($installation->access_token_expires_at && $installation->access_token_expires_at->isPast()) {
+            $installation = $this->refreshInstallation($installation);
+        }
+
+        $normalizedEntityType = strtolower(trim($entityType));
+
+        if (!in_array($normalizedEntityType, ['contacts', 'leads'], true)) {
+            throw new RuntimeException('Unsupported Kommo entity type.');
+        }
+
+        $payload = $this->requestApi(
+            $installation,
+            $normalizedEntityType . '/' . rawurlencode($entityId),
+            $normalizedEntityType === 'leads' ? ['with' => 'contacts'] : []
+        );
+
+        return $normalizedEntityType === 'contacts'
+            ? $this->mapContactSnapshot($payload)
+            : $this->mapLeadSnapshot($payload);
+    }
+
     private function requestToken(string $referer, array $payload): array
     {
         try {
@@ -141,6 +181,25 @@ class KommoOAuthService
                 ?: $e->getMessage();
 
             throw new RuntimeException('Kommo token request failed: ' . $message, previous: $e);
+        }
+    }
+
+    private function requestApi(KommoInstallation $installation, string $path, array $query = []): array
+    {
+        try {
+            return Http::acceptJson()
+                ->withToken($installation->access_token)
+                ->timeout(20)
+                ->get(rtrim($installation->referer, '/') . '/api/v4/' . ltrim($path, '/'), $query)
+                ->throw()
+                ->json();
+        } catch (RequestException $e) {
+            $body = $e->response?->json();
+            $message = Arr::get($body, 'detail')
+                ?: Arr::get($body, 'title')
+                ?: $e->getMessage();
+
+            throw new RuntimeException('Kommo API request failed: ' . $message, previous: $e);
         }
     }
 
@@ -247,5 +306,62 @@ class KommoOAuthService
             'subdomain' => $subdomain,
             'ts' => Carbon::now()->timestamp,
         ]));
+    }
+
+    private function mapContactSnapshot(array $payload): array
+    {
+        return [
+            'entity_type' => 'contacts',
+            'entity_id' => (string) Arr::get($payload, 'id', ''),
+            'name' => (string) Arr::get($payload, 'name', ''),
+            'phone' => $this->extractPrimaryFieldValue($payload, ['PHONE']),
+            'email' => $this->extractPrimaryFieldValue($payload, ['EMAIL']),
+            'custom_fields_values' => Arr::get($payload, 'custom_fields_values', []),
+        ];
+    }
+
+    private function mapLeadSnapshot(array $payload): array
+    {
+        $contacts = collect(Arr::get($payload, '_embedded.contacts', []))
+            ->map(function ($contact) {
+                return [
+                    'id' => (string) Arr::get($contact, 'id', ''),
+                    'name' => (string) Arr::get($contact, 'name', ''),
+                    'phone' => $this->extractPrimaryFieldValue($contact, ['PHONE']),
+                    'email' => $this->extractPrimaryFieldValue($contact, ['EMAIL']),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'entity_type' => 'leads',
+            'entity_id' => (string) Arr::get($payload, 'id', ''),
+            'name' => (string) Arr::get($payload, 'name', ''),
+            'price' => (float) Arr::get($payload, 'price', 0),
+            'contacts' => $contacts,
+            'primary_contact' => $contacts[0] ?? null,
+        ];
+    }
+
+    private function extractPrimaryFieldValue(array $payload, array $fieldCodes): ?string
+    {
+        foreach (Arr::get($payload, 'custom_fields_values', []) as $field) {
+            $code = strtoupper((string) Arr::get($field, 'field_code', ''));
+
+            if (!in_array($code, $fieldCodes, true)) {
+                continue;
+            }
+
+            foreach (Arr::get($field, 'values', []) as $value) {
+                $resolved = trim((string) Arr::get($value, 'value', ''));
+
+                if ($resolved !== '') {
+                    return $resolved;
+                }
+            }
+        }
+
+        return null;
     }
 }

@@ -3,7 +3,7 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "0.3.0",
+    "version": "0.4.5",
     "interface_version": 2,
     "init_once": false,
     "locale": [
@@ -11,11 +11,7 @@
       "es",
       "pt"
     ],
-    "installation": true,
-    "support": {
-      "link": "https://example.com",
-      "email": "support@spacioarte.local"
-    }
+    "installation": true
   },
   "locations": [
     "settings",

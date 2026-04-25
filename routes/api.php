@@ -22,6 +22,7 @@ Route::prefix('integrations/kommo')->group(function () {
     Route::middleware('kommo.auth')->group(function () {
         Route::get('/ping', [KommoIntegrationController::class, 'ping']);
         Route::get('/contacts/search', [KommoIntegrationController::class, 'searchContacts']);
+        Route::get('/entities/{entityType}/{entityId}/snapshot', [KommoIntegrationController::class, 'entitySnapshot']);
         Route::post('/contacts/sync', [KommoIntegrationController::class, 'syncContact']);
         Route::get('/oauth/status', [KommoOAuthController::class, 'status']);
         Route::get('/oauth/start-url', [KommoOAuthController::class, 'startUrl']);

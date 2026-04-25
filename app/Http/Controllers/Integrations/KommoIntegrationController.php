@@ -7,6 +7,7 @@ use App\Models\Contacto;
 use App\Models\FacturaVenta;
 use App\Models\KommoWebhookReceipt;
 use App\Services\Integrations\KommoIntegrationService;
+use App\Services\Integrations\KommoOAuthService;
 use App\Services\InvoiceShareService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ class KommoIntegrationController extends Controller
 {
     public function __construct(
         private readonly KommoIntegrationService $kommo,
+        private readonly KommoOAuthService $oauth,
         private readonly InvoiceShareService $invoiceShareService,
     ) {
     }
@@ -97,6 +99,21 @@ class KommoIntegrationController extends Controller
         return response()->json([
             'invoice' => $this->kommo->mapInvoice($factura->fresh(['cliente', 'vendedor'])),
             'share' => $shareData,
+        ]);
+    }
+
+    public function entitySnapshot(Request $request, string $entityType, string $entityId): JsonResponse
+    {
+        $validated = $request->validate([
+            'subdomain' => 'nullable|string|max:120',
+        ]);
+
+        return response()->json([
+            'data' => $this->oauth->fetchEntitySnapshot(
+                $validated['subdomain'] ?? null,
+                $entityType,
+                $entityId
+            ),
         ]);
     }
 

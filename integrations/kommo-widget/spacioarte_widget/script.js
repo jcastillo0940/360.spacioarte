@@ -5,6 +5,7 @@ define(["jquery"], function ($) {
     var self = this;
     var state = {
       context: null,
+      kommoSnapshot: null,
       matchedContact: null,
       invoices: [],
       quotes: [],
@@ -17,7 +18,31 @@ define(["jquery"], function ($) {
     };
 
     function widgetCode() {
-      return (self.get_settings() && self.get_settings().widget_code) || "spacioarte_widget";
+      return (self.get_settings && self.get_settings().widget_code) || "spacioarte_widget";
+    }
+
+    function widgetSettingsMeta() {
+      return self.get_settings ? self.get_settings() : {};
+    }
+
+    function ensureStylesLoaded() {
+      var settings = widgetSettingsMeta();
+      var version = settings.version || "1";
+      var basePath = settings.path || ("/widgets/" + widgetCode() + "/");
+
+      if (basePath.slice(-1) !== "/") {
+        basePath += "/";
+      }
+
+      var href = basePath + "style.css?v=" + encodeURIComponent(version);
+
+      if ($('link[href="' + href + '"]').length < 1) {
+        $("head").append('<link href="' + href + '" type="text/css" rel="stylesheet">');
+      }
+    }
+
+    function root() {
+      return $(".spacioarte-kommo-root");
     }
 
     function getWidgetSettings() {
@@ -44,6 +69,10 @@ define(["jquery"], function ($) {
       return getWidgetSettings().apiBaseUrl + path;
     }
 
+    function erpUrl(path) {
+      return getWidgetSettings().apiBaseUrl + path;
+    }
+
     function safeText(value) {
       return String(value == null ? "" : value)
         .replace(/&/g, "&amp;")
@@ -65,7 +94,7 @@ define(["jquery"], function ($) {
 
     function shortDate(value) {
       if (!value) {
-        return "N/A";
+        return "Sin fecha";
       }
 
       try {
@@ -75,8 +104,14 @@ define(["jquery"], function ($) {
       }
     }
 
-    function root() {
-      return $(".spacioarte-kommo-root");
+    function truncate(value, max) {
+      var text = String(value || "");
+
+      if (text.length <= max) {
+        return text;
+      }
+
+      return text.slice(0, max - 1) + "...";
     }
 
     function setLoading(flag) {
@@ -126,7 +161,12 @@ define(["jquery"], function ($) {
     function cardTitle() {
       var attrs = currentCardModelAttributes();
 
-      return attrs.name || attrs.title || attrs.company_name || "Kommo card";
+      return attrs.name || attrs.title || attrs.company_name || "Registro de Kommo";
+    }
+
+    function cardPrice() {
+      var attrs = currentCardModelAttributes();
+      return parseFloat(attrs.price || 0);
     }
 
     function firstValue(list) {
@@ -154,6 +194,122 @@ define(["jquery"], function ($) {
       };
     }
 
+    function normalizeSnapshotCandidate(snapshot) {
+      snapshot = snapshot || {};
+
+      return normalizeContactCandidate({
+        id: snapshot.id || snapshot.entity_id || null,
+        name: snapshot.name || "",
+        phones: snapshot.phone ? [snapshot.phone] : [],
+        emails: snapshot.email ? [snapshot.email] : [],
+      });
+    }
+
+    function cleanValue(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function uniqueValues(values) {
+      var seen = {};
+      var result = [];
+
+      $.each(values || [], function (_, value) {
+        var normalized = cleanValue(value);
+
+        if (!normalized || seen[normalized]) {
+          return;
+        }
+
+        seen[normalized] = true;
+        result.push(normalized);
+      });
+
+      return result;
+    }
+
+    function extractFieldValuesFromCustomFields(fieldNeedles) {
+      var attrs = currentCardModelAttributes();
+      var customFields = attrs.custom_fields_values || [];
+      var values = [];
+
+      $.each(customFields, function (_, field) {
+        var code = String(field.field_code || "").toLowerCase();
+        var name = String(field.field_name || "").toLowerCase();
+        var matches = false;
+
+        $.each(fieldNeedles, function (_, needle) {
+          needle = String(needle).toLowerCase();
+
+          if (code === needle || name.indexOf(needle) !== -1) {
+            matches = true;
+            return false;
+          }
+        });
+
+        if (!matches) {
+          return;
+        }
+
+        $.each(field.values || [], function (_, item) {
+          if ($.isPlainObject(item) && item.value) {
+            values.push(item.value);
+          } else if (item) {
+            values.push(item);
+          }
+        });
+      });
+
+      return uniqueValues(values);
+    }
+
+    function extractVisibleContactInputs(selectors) {
+      var values = [];
+
+      $.each(selectors, function (_, selector) {
+        $(selector).each(function () {
+          var raw = "";
+
+          if (this.tagName && this.tagName.toLowerCase() === "input") {
+            raw = $(this).val();
+          } else {
+            raw = $(this).text();
+          }
+
+          raw = cleanValue(raw);
+
+          if (raw) {
+            values.push(raw);
+          }
+        });
+      });
+
+      return uniqueValues(values);
+    }
+
+    function contactCardCandidateFromDom() {
+      var attrs = currentCardModelAttributes();
+      var phoneValues = extractVisibleContactInputs([
+        ".card-cf-table-main-entity .phone_wrapper input[type=text]:visible",
+        ".card-cf-table-main-entity input[name*='PHONE']:visible",
+        ".card-cf-table-main-entity .multifield__value input:visible"
+      ]).concat(extractFieldValuesFromCustomFields(["phone", "telefono", "teléfono"]));
+
+      var emailValues = extractVisibleContactInputs([
+        ".card-cf-table-main-entity .email_wrapper input[type=text]:visible",
+        ".card-cf-table-main-entity input[name*='EMAIL']:visible"
+      ]).concat(extractFieldValuesFromCustomFields(["email", "correo"]));
+
+      phoneValues = uniqueValues(phoneValues);
+      emailValues = uniqueValues(emailValues);
+
+      return normalizeContactCandidate({
+        id: currentCard() ? currentCard().id : null,
+        name: attrs.name || cardTitle(),
+        phones: phoneValues,
+        emails: emailValues,
+      });
+    }
+
     function request(method, path, payload) {
       return $.ajax({
         url: apiUrl(path),
@@ -166,11 +322,39 @@ define(["jquery"], function ($) {
       });
     }
 
+    function fetchKommoSnapshot() {
+      if (!state.context || !state.context.entityId) {
+        return $.Deferred().resolve(null).promise();
+      }
+
+      return request(
+        "GET",
+        "/api/integrations/kommo/entities/" + encodeURIComponent(state.context.entityType) + "/" + encodeURIComponent(state.context.entityId) + "/snapshot",
+        { subdomain: currentAccountSubdomain() || undefined }
+      );
+    }
+
     function resolveCardContacts() {
       if (typeof self.get_current_card_contacts_data === "function") {
         return self.get_current_card_contacts_data()
           .then(function (contacts) {
-            return $.map(contacts || [], normalizeContactCandidate);
+            var normalized = $.map(contacts || [], normalizeContactCandidate);
+
+            if (currentEntityType() === "contacts") {
+              normalized.unshift(contactCardCandidateFromDom());
+            }
+
+            if (state.kommoSnapshot) {
+              if (state.kommoSnapshot.entity_type === "contacts") {
+                normalized.unshift(normalizeSnapshotCandidate(state.kommoSnapshot));
+              }
+
+              if (state.kommoSnapshot.entity_type === "leads" && $.isArray(state.kommoSnapshot.contacts)) {
+                normalized = $.map(state.kommoSnapshot.contacts, normalizeSnapshotCandidate).concat(normalized);
+              }
+            }
+
+            return normalized;
           })
           .catch(function () {
             return fallbackCardContacts();
@@ -182,6 +366,10 @@ define(["jquery"], function ($) {
 
     function fallbackCardContacts() {
       var attrs = currentCardModelAttributes();
+
+      if (currentEntityType() === "contacts") {
+        return [contactCardCandidateFromDom()];
+      }
 
       return [
         normalizeContactCandidate({
@@ -195,7 +383,7 @@ define(["jquery"], function ($) {
 
     function searchContactInErp(candidate) {
       if (!candidate) {
-        return $.Deferred().resolve([]).promise();
+        return $.Deferred().resolve({ data: [] }).promise();
       }
 
       if (candidate.phone) {
@@ -264,32 +452,41 @@ define(["jquery"], function ($) {
       var attrs = currentCardModelAttributes();
       var contacts = (state.context && state.context.contacts) || [];
       var primary = contacts[0] || {};
+      var snapshot = state.kommoSnapshot || {};
       var entityType = state.context ? state.context.entityType : currentEntityType();
 
       if (entityType === "leads") {
+        if (snapshot.primary_contact) {
+          primary = normalizeSnapshotCandidate(snapshot.primary_contact);
+        }
+
         return {
           path: "/api/integrations/kommo/leads/sync",
           payload: {
             kommo_lead_id: String(state.context.entityId),
             kommo_contact_id: primary.id ? String(primary.id) : null,
-            title: attrs.name || cardTitle(),
-            company_name: primary.name || attrs.name || null,
-            contact_name: primary.name || attrs.name || null,
+            title: snapshot.name || attrs.name || cardTitle(),
+            company_name: primary.name || snapshot.name || attrs.name || null,
+            contact_name: primary.name || snapshot.name || attrs.name || null,
             email: primary.email || "",
             phone: primary.phone || "",
-            expected_value: attrs.price || 0,
-            notes: "Synchronized from Kommo private widget.",
+            expected_value: snapshot.price || attrs.price || 0,
+            notes: "Sincronizado desde el widget privado de Kommo.",
           },
         };
+      }
+
+      if (snapshot.entity_type === "contacts") {
+        primary = normalizeSnapshotCandidate(snapshot);
       }
 
       return {
         path: "/api/integrations/kommo/contacts/sync",
         payload: {
           kommo_contact_id: String(state.context.entityId),
-          name: attrs.name || primary.name || cardTitle(),
-          company_name: attrs.name || primary.name || cardTitle(),
-          contact_name: attrs.name || primary.name || cardTitle(),
+          name: primary.name || snapshot.name || attrs.name || cardTitle(),
+          company_name: primary.name || snapshot.name || attrs.name || cardTitle(),
+          contact_name: primary.name || snapshot.name || attrs.name || cardTitle(),
           email: primary.email || attrs.email || "",
           phone: primary.phone || attrs.phone || "",
         },
@@ -313,7 +510,7 @@ define(["jquery"], function ($) {
           return null;
         })
         .fail(function (xhr) {
-          setError(extractXhrError(xhr, "Could not sync the current Kommo card."));
+          setError(extractXhrError(xhr, "No se pudo sincronizar la tarjeta actual."));
         })
         .always(function () {
           state.syncing = false;
@@ -332,7 +529,7 @@ define(["jquery"], function ($) {
           renderWidget();
         })
         .fail(function (xhr) {
-          setError(extractXhrError(xhr, "Order not found in the ERP."));
+          setError(extractXhrError(xhr, "No se encontro esa orden en el ERP."));
         })
         .always(function () {
           setLoading(false);
@@ -348,7 +545,7 @@ define(["jquery"], function ($) {
           renderWidget();
         })
         .fail(function (xhr) {
-          setError(extractXhrError(xhr, "Could not generate the WhatsApp share link."));
+          setError(extractXhrError(xhr, "No se pudo generar el enlace de WhatsApp."));
         });
     }
 
@@ -358,6 +555,14 @@ define(["jquery"], function ($) {
       }
 
       return fallback;
+    }
+
+    function fetchOAuthStatus() {
+      var subdomain = currentAccountSubdomain();
+
+      return request("GET", "/api/integrations/kommo/oauth/status", {
+        subdomain: subdomain || undefined,
+      });
     }
 
     function initialLoad() {
@@ -378,15 +583,26 @@ define(["jquery"], function ($) {
 
       setLoading(true);
 
-      $.when(fetchOAuthStatus(), resolveCardContacts())
-        .then(function (oauthResponse, contactsResponse) {
-          var contacts = contactsResponse;
+      $.when(fetchOAuthStatus(), fetchKommoSnapshot())
+        .then(function (oauthResponse, snapshotResponse) {
+          var snapshotPayload = snapshotResponse;
 
           if ($.isArray(oauthResponse) && oauthResponse.length) {
             state.oauthStatus = oauthResponse[0];
           } else if ($.isPlainObject(oauthResponse)) {
             state.oauthStatus = oauthResponse;
           }
+
+          if ($.isArray(snapshotResponse) && snapshotResponse.length) {
+            snapshotPayload = snapshotResponse[0];
+          }
+
+          state.kommoSnapshot = snapshotPayload && snapshotPayload.data ? snapshotPayload.data : null;
+
+          return resolveCardContacts();
+        })
+        .then(function (contactsResponse) {
+          var contacts = contactsResponse;
 
           if ($.isArray(contactsResponse) && contactsResponse.length && $.isArray(contactsResponse[0])) {
             contacts = contactsResponse[0];
@@ -396,156 +612,338 @@ define(["jquery"], function ($) {
           return autoMatchContact();
         })
         .fail(function () {
-          setError("Could not initialize the ERP or OAuth data for this card.");
+          setError("No se pudo inicializar el widget con los datos del ERP.");
         })
         .always(function () {
           setLoading(false);
         });
     }
 
-    function fetchOAuthStatus() {
-      var subdomain = currentAccountSubdomain();
+    function openExternal(url) {
+      if (!url) {
+        return;
+      }
 
-      return request("GET", "/api/integrations/kommo/oauth/status", {
-        subdomain: subdomain || undefined,
-      });
+      window.open(url, "_blank", "noopener,noreferrer");
     }
 
-    function widgetBody() {
-      var settings = getWidgetSettings();
-      var contact = state.matchedContact;
-      var contactHtml = contact
-        ? (
-            '<div class="spacioarte-kommo-card">' +
-              '<div class="spacioarte-kommo-card__title">ERP Contact</div>' +
-              '<div class="spacioarte-kommo-stat"><span>Name</span><strong>' + safeText(contact.razon_social) + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Phone</span><strong>' + safeText(contact.telefono || "N/A") + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Email</span><strong>' + safeText(contact.email || "N/A") + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Pending balance</span><strong>' + money(contact.saldo_pendiente_facturas) + '</strong></div>' +
-            '</div>'
-          )
-        : (
-            '<div class="spacioarte-kommo-card spacioarte-kommo-card--muted">' +
-              '<div class="spacioarte-kommo-card__title">ERP Contact</div>' +
-              '<p>No ERP contact matched automatically from this Kommo card yet.</p>' +
-            '</div>'
-          );
+    function copyToClipboard(text) {
+      if (!text) {
+        return;
+      }
 
-      var oauthHtml = state.oauthStatus
-        ? (
-            '<div class="spacioarte-kommo-card">' +
-              '<div class="spacioarte-kommo-card__title">Kommo OAuth</div>' +
-              '<div class="spacioarte-kommo-stat"><span>Subdomain</span><strong>' + safeText(state.oauthStatus.subdomain || currentAccountSubdomain() || "N/A") + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>ERP OAuth config</span><strong>' + (state.oauthStatus.configured ? "Ready" : "Missing") + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Status</span><strong>' + (state.oauthStatus.connected ? "Connected" : "Not connected") + '</strong></div>' +
-              (state.oauthStatus.installation && state.oauthStatus.installation.last_authorized_at
-                ? '<div class="spacioarte-kommo-stat"><span>Authorized</span><strong>' + safeText(shortDate(state.oauthStatus.installation.last_authorized_at)) + '</strong></div>'
-                : '') +
-              (!state.oauthStatus.configured
-                ? '<div class="spacioarte-kommo-empty">Configure KOMMO_CLIENT_ID, KOMMO_CLIENT_SECRET, and KOMMO_REDIRECT_URI in the ERP first.</div>'
-                : '') +
-              (!state.oauthStatus.connected && state.oauthStatus.authorization_url
-                ? '<a class="spacioarte-kommo-link" href="' + safeText(state.oauthStatus.authorization_url) + '" target="_blank">Connect Kommo account</a>'
-                : '') +
-            '</div>'
-          )
-        : "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      }
+    }
 
-      var invoicesHtml = state.invoices.length
-        ? $.map(state.invoices.slice(0, 5), function (invoice) {
-            return (
-              '<div class="spacioarte-kommo-list-item">' +
-                '<div>' +
-                  '<div class="spacioarte-kommo-list-item__title">' + safeText(invoice.numero_factura) + '</div>' +
-                  '<div class="spacioarte-kommo-list-item__meta">' + safeText(invoice.estado) + " • " + money(invoice.total) + '</div>' +
-                '</div>' +
-                '<button class="spacioarte-kommo-btn spacioarte-kommo-btn--ghost" data-action="share-invoice" data-id="' + safeText(invoice.id) + '">WhatsApp</button>' +
-              '</div>'
+    function openErpSection(section) {
+      var routes = {
+        contactos: "/contactos",
+        cotizaciones: "/ventas/cotizaciones",
+        cotizacionNueva: "/ventas/cotizaciones/crear",
+        ordenes: "/ventas/ordenes",
+        ordenNueva: "/ventas/ordenes/crear",
+        facturas: "/ventas/facturas",
+      };
+
+      openExternal(erpUrl(routes[section] || "/"));
+    }
+
+    function contactStatusLabel() {
+      if (!state.matchedContact) {
+        return "Sin vincular";
+      }
+
+      if (state.matchedContact.saldo_pendiente_facturas > 0) {
+        return "Cliente con saldo";
+      }
+
+      return "Cliente ERP vinculado";
+    }
+
+    function candidateSummary() {
+      var contacts = (state.context && state.context.contacts) || [];
+      var primary = contacts[0] || {};
+      var parts = [];
+
+      if (primary.name) {
+        parts.push(primary.name);
+      }
+      if (primary.phone) {
+        parts.push(primary.phone);
+      }
+      if (primary.email) {
+        parts.push(primary.email);
+      }
+
+      return parts.join(" - ") || "No hay contacto vinculado en esta tarjeta de Kommo.";
+    }
+
+    function totalPendingBalance() {
+      var total = 0;
+
+      $.each(state.invoices || [], function (_, invoice) {
+        total += parseFloat(invoice.saldo_pendiente || 0);
+      });
+
+      return total;
+    }
+
+    function latestDeliveryDate() {
+      if (!state.order || !state.order.fecha_entrega) {
+        return "Sin consulta";
+      }
+
+      return shortDate(state.order.fecha_entrega);
+    }
+
+    function heroClass() {
+      if (state.error) {
+        return "spacioarte-kommo-hero spacioarte-kommo-hero--danger";
+      }
+
+      if (state.matchedContact) {
+        return "spacioarte-kommo-hero spacioarte-kommo-hero--ready";
+      }
+
+      return "spacioarte-kommo-hero";
+    }
+
+    function actionTile(label, subtitle, action, modifier) {
+      return (
+        '<button class="spacioarte-kommo-tile' + (modifier ? " " + modifier : "") + '" data-action="' + safeText(action) + '">' +
+          '<span class="spacioarte-kommo-tile__label">' + safeText(label) + "</span>" +
+          (subtitle ? '<span class="spacioarte-kommo-tile__meta">' + safeText(subtitle) + "</span>" : "") +
+        "</button>"
+      );
+    }
+
+    function linkTile(label, subtitle, href, modifier) {
+      return (
+        '<button class="spacioarte-kommo-tile' + (modifier ? " " + modifier : "") + '" data-action="open-link" data-link="' + safeText(href) + '">' +
+          '<span class="spacioarte-kommo-tile__label">' + safeText(label) + "</span>" +
+          (subtitle ? '<span class="spacioarte-kommo-tile__meta">' + safeText(subtitle) + "</span>" : "") +
+        "</button>"
+      );
+    }
+
+    function metricCard(label, value, tone) {
+      return (
+        '<div class="spacioarte-kommo-metric' + (tone ? " " + tone : "") + '">' +
+          '<div class="spacioarte-kommo-metric__label">' + safeText(label) + "</div>" +
+          '<div class="spacioarte-kommo-metric__value">' + safeText(value) + "</div>" +
+        "</div>"
+      );
+    }
+
+    function renderDocumentList(items, type) {
+      if (!items.length) {
+        return '<div class="spacioarte-kommo-empty">Todavia no hay ' + safeText(type === "invoice" ? "facturas" : "cotizaciones") + " para este cliente.</div>";
+      }
+
+      return $.map(items.slice(0, 4), function (item) {
+        var title = type === "invoice" ? item.numero_factura : item.numero_cotizacion;
+        var status = item.estado || "Sin estado";
+        var href = type === "invoice"
+          ? erpUrl("/ventas/facturas/" + item.id)
+          : erpUrl("/ventas/cotizaciones/" + item.id + "/editar");
+        var actionHtml = type === "invoice"
+          ? (
+              '<div class="spacioarte-kommo-list-item__actions">' +
+                '<button class="spacioarte-kommo-chip-btn" data-action="share-invoice" data-id="' + safeText(item.id) + '">WhatsApp</button>' +
+                '<button class="spacioarte-kommo-chip-btn spacioarte-kommo-chip-btn--light" data-action="open-link" data-link="' + safeText(href) + '">Abrir</button>' +
+              "</div>"
+            )
+          : (
+              '<div class="spacioarte-kommo-list-item__actions">' +
+                '<button class="spacioarte-kommo-chip-btn spacioarte-kommo-chip-btn--light" data-action="open-link" data-link="' + safeText(href) + '">Abrir</button>' +
+              "</div>"
             );
-          }).join("")
-        : '<div class="spacioarte-kommo-empty">No invoices available for this ERP contact.</div>';
 
-      var quotesHtml = state.quotes.length
-        ? $.map(state.quotes.slice(0, 5), function (quote) {
-            return (
-              '<div class="spacioarte-kommo-list-item">' +
-                '<div>' +
-                  '<div class="spacioarte-kommo-list-item__title">' + safeText(quote.numero_cotizacion) + '</div>' +
-                  '<div class="spacioarte-kommo-list-item__meta">' + safeText(quote.estado) + " • " + money(quote.total) + '</div>' +
-                '</div>' +
-              '</div>'
-            );
-          }).join("")
-        : '<div class="spacioarte-kommo-empty">No quotes available for this ERP contact.</div>';
+        return (
+          '<div class="spacioarte-kommo-list-item">' +
+            '<div class="spacioarte-kommo-list-item__body">' +
+              '<div class="spacioarte-kommo-list-item__title">' + safeText(title || "Documento") + "</div>" +
+              '<div class="spacioarte-kommo-list-item__meta">' + safeText(status) + " - " + safeText(shortDate(item.fecha_emision)) + "</div>" +
+            "</div>" +
+            '<div class="spacioarte-kommo-list-item__side">' +
+              '<div class="spacioarte-kommo-list-item__amount">' + money(item.total || 0) + "</div>" +
+              actionHtml +
+            "</div>" +
+          "</div>"
+        );
+      }).join("");
+    }
 
-      var orderHtml = state.order
-        ? (
-            '<div class="spacioarte-kommo-card">' +
-              '<div class="spacioarte-kommo-card__title">Order ' + safeText(state.order.numero_orden) + '</div>' +
-              '<div class="spacioarte-kommo-stat"><span>Status</span><strong>' + safeText(state.order.estado || "N/A") + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Design</span><strong>' + safeText(state.order.estado_diseno || "N/A") + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Delivery</span><strong>' + safeText(shortDate(state.order.fecha_entrega)) + '</strong></div>' +
-              '<div class="spacioarte-kommo-stat"><span>Pending</span><strong>' + money(state.order.saldo_pendiente) + '</strong></div>' +
-              (state.order.tracking_url ? '<a class="spacioarte-kommo-link" href="' + safeText(state.order.tracking_url) + '" target="_blank">Open tracking portal</a>' : '') +
-            '</div>'
-          )
-        : '<div class="spacioarte-kommo-empty">Lookup an order number to see delivery, balance, and tracking details.</div>';
-
-      var shareHtml = state.shareResult
-        ? (
-            '<div class="spacioarte-kommo-share">' +
-              '<div class="spacioarte-kommo-card__title">WhatsApp Share Ready</div>' +
-              '<a class="spacioarte-kommo-link" href="' + safeText(state.shareResult.whatsapp_url || "#") + '" target="_blank">Open WhatsApp</a>' +
-              '<button class="spacioarte-kommo-btn spacioarte-kommo-btn--ghost" data-action="copy-link" data-link="' + safeText(state.shareResult.share_url || "") + '">Copy link</button>' +
-            '</div>'
-          )
-        : "";
+    function renderMatchedContactCard() {
+      if (!state.matchedContact) {
+        return (
+          '<div class="spacioarte-kommo-card spacioarte-kommo-card--muted">' +
+            '<div class="spacioarte-kommo-card__title">Cliente ERP</div>' +
+            '<div class="spacioarte-kommo-empty">Este lead aun no coincide con un cliente del ERP. Usa "Sincronizar cliente" y vuelve a cargar.</div>' +
+            '<div class="spacioarte-kommo-hint-list">' +
+              '<div class="spacioarte-kommo-hint">Lead: ' + safeText(truncate(candidateSummary(), 54)) + "</div>" +
+              '<div class="spacioarte-kommo-hint">Match ideal: telefono, email o nombre iguales al ERP.</div>' +
+            "</div>" +
+          "</div>"
+        );
+      }
 
       return (
-        '<div class="spacioarte-kommo-shell">' +
-          '<div class="spacioarte-kommo-section">' +
-            '<div class="spacioarte-kommo-header">' +
-              '<div>' +
-                '<div class="spacioarte-kommo-eyebrow">SpacioArte ERP</div>' +
-                '<h3 class="spacioarte-kommo-title">' + safeText((state.context && state.context.title) || "Kommo card") + '</h3>' +
-                '<div class="spacioarte-kommo-meta">' + safeText((state.context && state.context.entityType) || "card") + " #" + safeText((state.context && state.context.entityId) || "-") + '</div>' +
-              '</div>' +
-              '<button class="spacioarte-kommo-btn" data-action="refresh">Refresh</button>' +
-            '</div>' +
-            '<div class="spacioarte-kommo-status">' +
-              '<span>API</span><strong>' + safeText(settings.apiBaseUrl || "Not configured") + '</strong>' +
-            '</div>' +
-            (state.error ? '<div class="spacioarte-kommo-alert">' + safeText(state.error) + '</div>' : '') +
-            (state.loading ? '<div class="spacioarte-kommo-loading">Loading ERP data...</div>' : '') +
-            '<div class="spacioarte-kommo-actions">' +
-              '<button class="spacioarte-kommo-btn" data-action="sync-card">' + (state.syncing ? "Syncing..." : "Sync current card") + '</button>' +
-            '</div>' +
-          '</div>' +
-          contactHtml +
-          oauthHtml +
-          '<div class="spacioarte-kommo-card">' +
-            '<div class="spacioarte-kommo-card__title">Order Lookup</div>' +
-            '<div class="spacioarte-kommo-order-form">' +
-              '<input class="spacioarte-kommo-input" id="spacioarte-order-input" placeholder="' + safeText(settings.defaultOrderPrefix || "OV-") + '000001" />' +
-              '<button class="spacioarte-kommo-btn" data-action="lookup-order">Search</button>' +
-            '</div>' +
-            orderHtml +
-          '</div>' +
-          '<div class="spacioarte-kommo-card">' +
-            '<div class="spacioarte-kommo-card__title">Invoices</div>' +
-            '<div class="spacioarte-kommo-list">' + invoicesHtml + '</div>' +
-          '</div>' +
-          '<div class="spacioarte-kommo-card">' +
-            '<div class="spacioarte-kommo-card__title">Quotes</div>' +
-            '<div class="spacioarte-kommo-list">' + quotesHtml + '</div>' +
-          '</div>' +
-          shareHtml +
-        '</div>'
+        '<div class="spacioarte-kommo-card">' +
+          '<div class="spacioarte-kommo-card__title">Cliente ERP</div>' +
+          '<div class="spacioarte-kommo-contact-head">' +
+            '<div>' +
+              '<div class="spacioarte-kommo-contact-name">' + safeText(state.matchedContact.razon_social) + "</div>" +
+              '<div class="spacioarte-kommo-contact-meta">' + safeText(state.matchedContact.identificacion || "Sin identificacion") + "</div>" +
+            "</div>" +
+            '<div class="spacioarte-kommo-pill spacioarte-kommo-pill--ok">Vinculado</div>' +
+          "</div>" +
+          '<div class="spacioarte-kommo-info-grid">' +
+            '<div class="spacioarte-kommo-info-block"><span>Telefono</span><strong>' + safeText(state.matchedContact.telefono || "Sin telefono") + "</strong></div>" +
+            '<div class="spacioarte-kommo-info-block"><span>Email</span><strong>' + safeText(state.matchedContact.email || "Sin email") + "</strong></div>" +
+            '<div class="spacioarte-kommo-info-block"><span>Condicion</span><strong>' + safeText(state.matchedContact.payment_term || "Sin condicion") + "</strong></div>" +
+            '<div class="spacioarte-kommo-info-block"><span>Saldo pendiente</span><strong>' + money(state.matchedContact.saldo_pendiente_facturas || 0) + "</strong></div>" +
+          "</div>" +
+        "</div>"
+      );
+    }
+
+    function renderOrderSection() {
+      var orderHtml = state.order
+        ? (
+            '<div class="spacioarte-kommo-order-card">' +
+              '<div class="spacioarte-kommo-order-card__header">' +
+                '<div>' +
+                  '<div class="spacioarte-kommo-order-card__title">' + safeText(state.order.numero_orden) + "</div>" +
+                  '<div class="spacioarte-kommo-order-card__meta">' + safeText(state.order.estado || "Sin estado") + "</div>" +
+                "</div>" +
+                '<button class="spacioarte-kommo-chip-btn spacioarte-kommo-chip-btn--light" data-action="open-link" data-link="' + safeText(erpUrl("/ventas/ordenes/" + state.order.id)) + '">Abrir orden</button>' +
+              "</div>" +
+              '<div class="spacioarte-kommo-info-grid">' +
+                '<div class="spacioarte-kommo-info-block"><span>Diseno</span><strong>' + safeText(state.order.estado_diseno || "Sin dato") + "</strong></div>" +
+                '<div class="spacioarte-kommo-info-block"><span>Entrega</span><strong>' + safeText(shortDate(state.order.fecha_entrega)) + "</strong></div>" +
+                '<div class="spacioarte-kommo-info-block"><span>Total</span><strong>' + money(state.order.total || 0) + "</strong></div>" +
+                '<div class="spacioarte-kommo-info-block"><span>Pendiente</span><strong>' + money(state.order.saldo_pendiente || 0) + "</strong></div>" +
+              "</div>" +
+              (state.order.tracking_url
+                ? '<button class="spacioarte-kommo-wide-btn" data-action="open-link" data-link="' + safeText(state.order.tracking_url) + '">Abrir tracking del cliente</button>'
+                : "") +
+            "</div>"
+          )
+        : '<div class="spacioarte-kommo-empty">Busca una orden para ver entrega, saldo y tracking del cliente.</div>';
+
+      return (
+        '<div class="spacioarte-kommo-card">' +
+          '<div class="spacioarte-kommo-card__title">Consulta de orden</div>' +
+          '<div class="spacioarte-kommo-order-form">' +
+            '<input class="spacioarte-kommo-input" id="spacioarte-order-input" placeholder="' + safeText(getWidgetSettings().defaultOrderPrefix || "OV-") + '000001" />' +
+            '<button class="spacioarte-kommo-btn" data-action="lookup-order">Buscar</button>' +
+          "</div>" +
+          orderHtml +
+        "</div>"
       );
     }
 
     function renderWidget() {
-      root().html(widgetBody());
+      var settings = getWidgetSettings();
+      var entityType = (state.context && state.context.entityType) || "lead";
+      var entityLabel = entityType === "leads" ? "Lead" : "Contacto";
+      var canOpenContactArea = !!settings.apiBaseUrl;
+      var quickActions = [
+        actionTile(state.matchedContact ? "Actualizar cliente" : "Sincronizar cliente", state.matchedContact ? "Refrescar ERP" : "Crear o vincular", "sync-card", "spacioarte-kommo-tile--primary"),
+        linkTile("Clientes ERP", "Directorio", canOpenContactArea ? erpUrl("/contactos") : "#", "spacioarte-kommo-tile--neutral"),
+        linkTile("Nueva cotizacion", "Crear propuesta", canOpenContactArea ? erpUrl("/ventas/cotizaciones/crear") : "#", ""),
+        linkTile("Nueva orden", "Pasar a produccion", canOpenContactArea ? erpUrl("/ventas/ordenes/crear") : "#", ""),
+        linkTile("Facturas", "Modulo ERP", canOpenContactArea ? erpUrl("/ventas/facturas") : "#", ""),
+        linkTile("Cotizaciones", "Modulo ERP", canOpenContactArea ? erpUrl("/ventas/cotizaciones") : "#", "")
+      ].join("");
+
+      var headerHtml = (
+        '<div class="' + heroClass() + '">' +
+          '<div class="spacioarte-kommo-hero__top">' +
+            '<div>' +
+              '<div class="spacioarte-kommo-eyebrow">SpacioArte x Kommo</div>' +
+              '<h3 class="spacioarte-kommo-title">' + safeText((state.context && state.context.title) || "Registro de Kommo") + "</h3>" +
+              '<div class="spacioarte-kommo-meta">' + safeText(entityLabel) + " #" + safeText((state.context && state.context.entityId) || "-") + "</div>" +
+            "</div>" +
+            '<button class="spacioarte-kommo-btn spacioarte-kommo-btn--soft" data-action="refresh">Actualizar</button>' +
+          "</div>" +
+          '<div class="spacioarte-kommo-pill-row">' +
+            '<div class="spacioarte-kommo-pill">' + safeText(contactStatusLabel()) + "</div>" +
+            '<div class="spacioarte-kommo-pill">' + safeText(state.oauthStatus && state.oauthStatus.connected ? "OAuth conectado" : "OAuth pendiente") + "</div>" +
+            '<div class="spacioarte-kommo-pill">' + safeText(truncate(candidateSummary(), 42)) + "</div>" +
+          "</div>" +
+          (state.error ? '<div class="spacioarte-kommo-alert">' + safeText(state.error) + "</div>" : "") +
+          (state.loading ? '<div class="spacioarte-kommo-loading">Cargando datos del ERP...</div>' : "") +
+        "</div>"
+      );
+
+      var metricsHtml = (
+        '<div class="spacioarte-kommo-metrics">' +
+          metricCard("Facturas", String(state.invoices.length), "spacioarte-kommo-metric--blue") +
+          metricCard("Cotizaciones", String(state.quotes.length), "spacioarte-kommo-metric--amber") +
+          metricCard("Saldo", money(totalPendingBalance()), "spacioarte-kommo-metric--dark") +
+          metricCard("Entrega", latestDeliveryDate(), "spacioarte-kommo-metric--light") +
+        "</div>"
+      );
+
+      var oauthCard = state.oauthStatus
+        ? (
+            '<div class="spacioarte-kommo-card">' +
+              '<div class="spacioarte-kommo-card__title">Estado de integracion</div>' +
+              '<div class="spacioarte-kommo-info-grid">' +
+                '<div class="spacioarte-kommo-info-block"><span>Subdominio</span><strong>' + safeText(state.oauthStatus.subdomain || currentAccountSubdomain() || "N/A") + "</strong></div>" +
+                '<div class="spacioarte-kommo-info-block"><span>OAuth</span><strong>' + safeText(state.oauthStatus.connected ? "Conectado" : "No conectado") + "</strong></div>" +
+                '<div class="spacioarte-kommo-info-block"><span>ERP</span><strong>' + safeText(settings.apiBaseUrl || "Sin URL") + "</strong></div>" +
+                '<div class="spacioarte-kommo-info-block"><span>Autorizado</span><strong>' + safeText(state.oauthStatus.installation && state.oauthStatus.installation.last_authorized_at ? shortDate(state.oauthStatus.installation.last_authorized_at) : "Pendiente") + "</strong></div>" +
+              "</div>" +
+              (!state.oauthStatus.connected && state.oauthStatus.authorization_url
+                ? '<button class="spacioarte-kommo-wide-btn" data-action="open-link" data-link="' + safeText(state.oauthStatus.authorization_url) + '">Conectar cuenta de Kommo</button>'
+                : "") +
+            "</div>"
+          )
+        : "";
+
+      var shareHtml = state.shareResult
+        ? (
+            '<div class="spacioarte-kommo-share">' +
+              '<div class="spacioarte-kommo-card__title">Factura lista para compartir</div>' +
+              '<div class="spacioarte-kommo-share__actions">' +
+                '<button class="spacioarte-kommo-btn" data-action="open-link" data-link="' + safeText(state.shareResult.whatsapp_url || "#") + '">Abrir WhatsApp</button>' +
+                '<button class="spacioarte-kommo-btn spacioarte-kommo-btn--soft" data-action="copy-link" data-link="' + safeText(state.shareResult.share_url || "") + '">Copiar enlace</button>' +
+              "</div>" +
+            "</div>"
+          )
+        : "";
+
+      root().html(
+        '<div class="spacioarte-kommo-shell">' +
+          headerHtml +
+          metricsHtml +
+          '<div class="spacioarte-kommo-grid-2">' +
+            '<div class="spacioarte-kommo-card">' +
+              '<div class="spacioarte-kommo-card__title">Acciones rapidas</div>' +
+              '<div class="spacioarte-kommo-tile-grid">' + quickActions + "</div>" +
+            "</div>" +
+            renderMatchedContactCard() +
+          "</div>" +
+          oauthCard +
+          renderOrderSection() +
+          '<div class="spacioarte-kommo-grid-2">' +
+            '<div class="spacioarte-kommo-card">' +
+              '<div class="spacioarte-kommo-card__title">Facturas del cliente</div>' +
+              '<div class="spacioarte-kommo-list">' + renderDocumentList(state.invoices, "invoice") + "</div>" +
+            "</div>" +
+            '<div class="spacioarte-kommo-card">' +
+              '<div class="spacioarte-kommo-card__title">Cotizaciones del cliente</div>' +
+              '<div class="spacioarte-kommo-list">' + renderDocumentList(state.quotes, "quote") + "</div>" +
+            "</div>" +
+          "</div>" +
+          shareHtml +
+        "</div>"
+      );
     }
 
     function renderSettingsHelp() {
@@ -558,9 +956,9 @@ define(["jquery"], function ($) {
 
       $block.prepend(
         '<div class="spacioarte-kommo-settings-help">' +
-          '<p><strong>API Base URL:</strong> use the ERP base URL, for example <code>https://erp.yourdomain.com</code>.</p>' +
-          '<p><strong>Integration Key:</strong> use the ERP <code>KOMMO_INTEGRATION_KEY</code>.</p>' +
-          '<p><strong>Order Prefix:</strong> optional helper placeholder, e.g. <code>OV-</code>.</p>' +
+          '<p><strong>URL base del ERP:</strong> usa la URL publica del ERP, por ejemplo <code>https://app.spacioarte.com</code>.</p>' +
+          '<p><strong>Llave de integracion:</strong> usa el valor de <code>KOMMO_INTEGRATION_KEY</code> del ERP.</p>' +
+          '<p><strong>Prefijo por defecto:</strong> ayuda al usuario a buscar ordenes, por ejemplo <code>OV-</code>.</p>' +
         "</div>"
       );
 
@@ -587,10 +985,10 @@ define(["jquery"], function ($) {
           shareInvoice($(this).data("id"));
         })
         .on("click.spacioarteKommo", "[data-action='copy-link']", function () {
-          var link = $(this).data("link");
-          if (navigator.clipboard && link) {
-            navigator.clipboard.writeText(link);
-          }
+          copyToClipboard($(this).data("link"));
+        })
+        .on("click.spacioarteKommo", "[data-action='open-link']", function () {
+          openExternal($(this).data("link"));
         });
     }
 
@@ -606,9 +1004,7 @@ define(["jquery"], function ($) {
             html: "SpacioArte ERP",
           },
           body: "",
-          render:
-            '<div class="spacioarte-kommo-root"></div>' +
-            '<link rel="stylesheet" type="text/css" href="/widgets/' + widgetCode() + '/style.css?v=' + encodeURIComponent(self.get_version ? self.get_version() : "1") + '">'
+          render: '<div class="spacioarte-kommo-root"></div>'
         });
 
         renderWidget();
@@ -617,6 +1013,8 @@ define(["jquery"], function ($) {
       },
 
       init: function () {
+        ensureStylesLoaded();
+
         if (self.system().area === "lcard" || self.system().area === "ccard") {
           initialLoad();
         }
