@@ -1,0 +1,13 @@
+{
+  "widget": {
+    "name": "SpacioArte ERP",
+    "short_description": "Conecta cartões do Kommo com faturas, orçamentos e rastreamento de pedidos do ERP.",
+    "description": "Use este widget para vincular o lead ou contato atual do Kommo ao ERP, sincronizá-lo, revisar orçamentos e faturas, consultar o status do pedido e abrir links de WhatsApp para compartilhar faturas.",
+    "tour_description": "Conecte o Kommo ao ERP para ver faturamento e produção no mesmo cartão."
+  },
+  "settings": {
+    "api_base_url": "URL base do ERP",
+    "integration_key": "Chave de integração do ERP",
+    "default_order_prefix": "Prefixo padrão do pedido"
+  }
+}

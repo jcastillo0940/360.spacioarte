@@ -1,0 +1,13 @@
+{
+  "widget": {
+    "name": "SpacioArte ERP",
+    "short_description": "Bridge Kommo cards with SpacioArte ERP invoices, quotes, and order tracking.",
+    "description": "Use this widget to match the current Kommo lead or contact with the ERP, sync it, review quotes and invoices, search order status, and open WhatsApp invoice sharing links.",
+    "tour_description": "Connect Kommo cards with the ERP to surface billing and production data in one place."
+  },
+  "settings": {
+    "api_base_url": "ERP base URL",
+    "integration_key": "ERP integration key",
+    "default_order_prefix": "Default order prefix"
+  }
+}

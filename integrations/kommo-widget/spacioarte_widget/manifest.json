@@ -1,0 +1,63 @@
+{
+  "widget": {
+    "name": "widget.name",
+    "description": "widget.description",
+    "short_description": "widget.short_description",
+    "version": "0.3.0",
+    "interface_version": 2,
+    "init_once": false,
+    "locale": [
+      "en",
+      "es",
+      "pt"
+    ],
+    "installation": true,
+    "support": {
+      "link": "https://example.com",
+      "email": "support@spacioarte.local"
+    }
+  },
+  "locations": [
+    "settings",
+    "lcard-1",
+    "ccard-1"
+  ],
+  "tour": {
+    "is_tour": true,
+    "tour_images": {
+      "en": [
+        "/images/tour_1_en.png",
+        "/images/tour_2_en.png",
+        "/images/tour_3_en.png"
+      ],
+      "es": [
+        "/images/tour_1_es.png",
+        "/images/tour_2_es.png",
+        "/images/tour_3_es.png"
+      ],
+      "pt": [
+        "/images/tour_1_pt.png",
+        "/images/tour_2_pt.png",
+        "/images/tour_3_pt.png"
+      ]
+    },
+    "tour_description": "widget.tour_description"
+  },
+  "settings": {
+    "api_base_url": {
+      "name": "settings.api_base_url",
+      "type": "text",
+      "required": true
+    },
+    "integration_key": {
+      "name": "settings.integration_key",
+      "type": "pass",
+      "required": true
+    },
+    "default_order_prefix": {
+      "name": "settings.default_order_prefix",
+      "type": "text",
+      "required": false
+    }
+  }
+}

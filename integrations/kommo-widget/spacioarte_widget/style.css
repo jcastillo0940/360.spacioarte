@@ -1,0 +1,202 @@
+.spacioarte-kommo-root,
+.spacioarte-kommo-root * {
+  box-sizing: border-box;
+}
+
+.spacioarte-kommo-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #172033;
+}
+
+.spacioarte-kommo-section,
+.spacioarte-kommo-card,
+.spacioarte-kommo-share,
+.spacioarte-kommo-settings-help {
+  background: #ffffff;
+  border: 1px solid #d8e0ef;
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.spacioarte-kommo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.spacioarte-kommo-eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #7c8ca5;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.spacioarte-kommo-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.spacioarte-kommo-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.spacioarte-kommo-status,
+.spacioarte-kommo-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.spacioarte-kommo-status span,
+.spacioarte-kommo-stat span {
+  color: #64748b;
+}
+
+.spacioarte-kommo-status strong,
+.spacioarte-kommo-stat strong {
+  color: #0f172a;
+  text-align: right;
+}
+
+.spacioarte-kommo-actions {
+  margin-top: 12px;
+}
+
+.spacioarte-kommo-btn {
+  border: 0;
+  background: #2563eb;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: opacity 0.2s ease;
+}
+
+.spacioarte-kommo-btn:hover {
+  opacity: 0.92;
+}
+
+.spacioarte-kommo-btn--ghost {
+  background: #eef2ff;
+  color: #1d4ed8;
+}
+
+.spacioarte-kommo-card__title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.spacioarte-kommo-card--muted {
+  background: #f8fafc;
+}
+
+.spacioarte-kommo-card--muted p,
+.spacioarte-kommo-empty,
+.spacioarte-kommo-loading {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.spacioarte-kommo-alert {
+  margin-top: 10px;
+  background: #fff1f2;
+  color: #be123c;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.spacioarte-kommo-order-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.spacioarte-kommo-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.spacioarte-kommo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spacioarte-kommo-list-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.spacioarte-kommo-list-item__title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.spacioarte-kommo-list-item__meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.spacioarte-kommo-link {
+  display: inline-flex;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.spacioarte-kommo-link:hover {
+  text-decoration: underline;
+}
+
+.spacioarte-kommo-share {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spacioarte-kommo-settings-help p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.spacioarte-kommo-settings-help code {
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 1px 4px;
+  border-radius: 4px;
+}

@@ -1,7 +1,8 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Integrations\KommoIntegrationController;
+use App\Http\Controllers\Integrations\KommoOAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -14,4 +15,21 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Rutas movidas a web.php para mantener consistencia con el sistema de sesiones del proyecto
+Route::prefix('integrations/kommo')->group(function () {
+    Route::post('/webhooks/events', [KommoIntegrationController::class, 'receiveWebhook'])
+        ->middleware('kommo.webhook');
+
+    Route::middleware('kommo.auth')->group(function () {
+        Route::get('/ping', [KommoIntegrationController::class, 'ping']);
+        Route::get('/contacts/search', [KommoIntegrationController::class, 'searchContacts']);
+        Route::post('/contacts/sync', [KommoIntegrationController::class, 'syncContact']);
+        Route::get('/oauth/status', [KommoOAuthController::class, 'status']);
+        Route::get('/oauth/start-url', [KommoOAuthController::class, 'startUrl']);
+        Route::post('/oauth/refresh', [KommoOAuthController::class, 'refresh']);
+        Route::get('/orders/{numeroOrden}', [KommoIntegrationController::class, 'showOrder']);
+        Route::get('/invoices/by-contact/{contacto}', [KommoIntegrationController::class, 'invoicesByContact']);
+        Route::get('/quotes/by-contact/{contacto}', [KommoIntegrationController::class, 'quotesByContact']);
+        Route::post('/invoices/{factura}/share-whatsapp', [KommoIntegrationController::class, 'shareInvoiceWhatsapp']);
+        Route::post('/leads/sync', [KommoIntegrationController::class, 'syncLead']);
+    });
+});

@@ -27,6 +27,7 @@ use App\Http\Controllers\Compras\{OrdenCompraController, FacturaCompraController
 use App\Http\Controllers\RRHH\{EmpleadoController, NominaController};
 use App\Http\Controllers\Flota\VehiculoController;
 use App\Http\Controllers\CRM\{PipelineController, LeadController, ActivityController};
+use App\Http\Controllers\Integrations\KommoOAuthController;
 
 // Producción (Módulo Manufactura SRS v2.0)
 use App\Http\Controllers\Produccion\{ProcesoController, FamiliaProduccionController, PliegoController, PlantaController, RequisicionController, KdsController, DisenoController};
@@ -57,6 +58,8 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::get('/f/{token}', [InvoiceShareController::class, 'show'])->name('facturas.shared.show');
+Route::get('/integrations/kommo/oauth/callback', [KommoOAuthController::class, 'callback'])->name('integrations.kommo.oauth.callback');
+Route::get('/integrations/kommo/oauth/revoked', [KommoOAuthController::class, 'revoked'])->name('integrations.kommo.oauth.revoked');
 
 // Portal del Cliente - Seguimiento y Aprobación (SRS Punto 9)
 Route::prefix('tracking')->group(function () {
@@ -517,4 +520,3 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 
 });
-

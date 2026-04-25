@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'kommo' => [
+        'client_id' => env('KOMMO_CLIENT_ID'),
+        'client_secret' => env('KOMMO_CLIENT_SECRET'),
+        'redirect_uri' => env('KOMMO_REDIRECT_URI'),
+        'oauth_success_redirect' => env('KOMMO_OAUTH_SUCCESS_REDIRECT'),
+    ],
+
 ];
