@@ -9,13 +9,41 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('nota_debito_detalles', function (Blueprint $table) {
-            $table->string('codigo_item')->nullable()->after('item_id');
-            $table->string('descripcion_item')->nullable()->after('codigo_item');
-            $table->decimal('subtotal_item', 15, 2)->default(0)->after('precio_unitario');
-            $table->decimal('porcentaje_itbms', 8, 2)->default(0)->after('subtotal_item');
-            $table->decimal('itbms_item', 15, 2)->default(0)->after('porcentaje_itbms');
-        });
+        $columnsToAdd = [];
+
+        if (!Schema::hasColumn('nota_debito_detalles', 'codigo_item')) {
+            $columnsToAdd[] = static function (Blueprint $table): void {
+                $table->string('codigo_item')->nullable()->after('item_id');
+            };
+        }
+
+        if (!Schema::hasColumn('nota_debito_detalles', 'descripcion_item')) {
+            $columnsToAdd[] = static function (Blueprint $table): void {
+                $table->string('descripcion_item')->nullable()->after('codigo_item');
+            };
+        }
+
+        if (!Schema::hasColumn('nota_debito_detalles', 'subtotal_item')) {
+            $columnsToAdd[] = static function (Blueprint $table): void {
+                $table->decimal('subtotal_item', 15, 2)->default(0)->after('precio_unitario');
+            };
+        }
+
+        if (!Schema::hasColumn('nota_debito_detalles', 'porcentaje_itbms')) {
+            $columnsToAdd[] = static function (Blueprint $table): void {
+                $table->decimal('porcentaje_itbms', 8, 2)->default(0)->after('subtotal_item');
+            };
+        }
+
+        if (!Schema::hasColumn('nota_debito_detalles', 'itbms_item')) {
+            $columnsToAdd[] = static function (Blueprint $table): void {
+                $table->decimal('itbms_item', 15, 2)->default(0)->after('porcentaje_itbms');
+            };
+        }
+
+        foreach ($columnsToAdd as $definition) {
+            Schema::table('nota_debito_detalles', $definition);
+        }
 
         DB::statement("
             UPDATE nota_debito_detalles nd
@@ -38,14 +66,18 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('nota_debito_detalles', function (Blueprint $table) {
-            $table->dropColumn([
-                'codigo_item',
-                'descripcion_item',
-                'subtotal_item',
-                'porcentaje_itbms',
-                'itbms_item',
-            ]);
-        });
+        $columnsToDrop = array_values(array_filter([
+            Schema::hasColumn('nota_debito_detalles', 'codigo_item') ? 'codigo_item' : null,
+            Schema::hasColumn('nota_debito_detalles', 'descripcion_item') ? 'descripcion_item' : null,
+            Schema::hasColumn('nota_debito_detalles', 'subtotal_item') ? 'subtotal_item' : null,
+            Schema::hasColumn('nota_debito_detalles', 'porcentaje_itbms') ? 'porcentaje_itbms' : null,
+            Schema::hasColumn('nota_debito_detalles', 'itbms_item') ? 'itbms_item' : null,
+        ]));
+
+        if ($columnsToDrop !== []) {
+            Schema::table('nota_debito_detalles', function (Blueprint $table) use ($columnsToDrop) {
+                $table->dropColumn($columnsToDrop);
+            });
+        }
     }
 };
